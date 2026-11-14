@@ -1,0 +1,2 @@
+@semaphore-protocol/contracts/=node_modules/@semaphore-protocol/contracts/
+forge-std/=lib/forge-std/src/
