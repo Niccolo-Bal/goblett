@@ -1,0 +1,10 @@
+# e2e run logs
+e2e/*.log
+# forge script broadcasts against local nodes (anvil / arc-anvil / forks)
+broadcast/*/31337/
+broadcast/*/5042002/
+
+# generated
+node_modules/
+out/
+cache/

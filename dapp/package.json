@@ -15,5 +15,11 @@
   "type": "commonjs",
   "dependencies": {
     "@semaphore-protocol/contracts": "^4.14.5"
+  },
+  "devDependencies": {
+    "@semaphore-protocol/group": "^4.14.5",
+    "@semaphore-protocol/identity": "^4.14.5",
+    "@semaphore-protocol/proof": "^4.14.5",
+    "ethers": "^6.17.0"
   }
 }

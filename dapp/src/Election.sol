@@ -5,17 +5,20 @@ import {ISemaphore} from "@semaphore-protocol/contracts/interfaces/ISemaphore.so
 import {ISemaphoreGroups} from "@semaphore-protocol/contracts/interfaces/ISemaphoreGroups.sol";
 
 /// @title Election
-/// @notice One anonymous first-past-the-post election with a public whitelist.
+/// @notice Base for one anonymous election with a public whitelist. Concrete
+///         elections (FPTPElection, RankedChoiceElection) add a `vote` function and
+///         the counting rule; everything security-relevant lives here.
 ///
 /// Lifecycle (all times are fixed at deployment; there is no admin afterwards):
-///   [deploy, registrationEnd)   whitelisted wallets register a Semaphore identity commitment
+///   [deploy, registrationEnd)   whitelisted wallets register a Semaphore identity commitment,
+///                               directly or via a relayer with an EIP-712 signature (registerFor)
 ///   [registrationEnd, votingStart)  gap: the member set (and Merkle root) is frozen
-///   [votingStart, votingEnd)    anyone submits (vote, nullifier, proof); msg.sender is ignored
+///   [votingStart, votingEnd)    anyone submits a proof + ballot; msg.sender is ignored
 ///   [votingEnd, ...)            results are final
 ///
-/// The vote is the proof's `message` (a candidate index), so it is bound to the proof
-/// and a relayer cannot change it.
-contract Election {
+/// The ballot is encoded in the proof's `message`, so it is bound to the proof and a
+/// relayer cannot change it. Each subclass defines that encoding.
+abstract contract Election {
     // ---------------------------------------------------------------------
     // Errors
     // ---------------------------------------------------------------------
@@ -28,6 +31,7 @@ contract Election {
     error RegistrationClosed();
     error NotWhitelisted();
     error AlreadyRegistered();
+    error InvalidSignature();
 
     error VotingNotOpen();
     error AnonymitySetTooSmall();
@@ -43,12 +47,23 @@ contract Election {
     // Events
     // ---------------------------------------------------------------------
     event Registered(address indexed wallet, uint256 identityCommitment);
-    event VoteCast(uint256 indexed nullifier, uint256 indexed candidate);
 
     // ---------------------------------------------------------------------
     // Configuration (immutable after deployment)
     // ---------------------------------------------------------------------
-    uint256 public constant MAX_CANDIDATES = 64;
+
+    /// @notice EIP-712 type a wallet signs to let anyone register its commitment.
+    ///         No nonce: the domain binds the signature to this election, and each
+    ///         wallet can register only once.
+    bytes32 public constant REGISTER_TYPEHASH = keccak256("Register(address wallet,uint256 identityCommitment)");
+    bytes32 private constant _DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 private constant _NAME_HASH = keccak256("goblet Election");
+    bytes32 private constant _VERSION_HASH = keccak256("1");
+    /// @dev secp256k1n / 2. Signatures with a larger s are the malleable twin of another one.
+    uint256 private constant _HALF_N = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
+    /// @dev ERC-1271 isValidSignature(bytes32,bytes) selector, returned on success.
+    bytes4 private constant _ERC1271_MAGIC = 0x1626ba7e;
 
     ISemaphore public immutable semaphore;
     uint256 public immutable groupId;
@@ -64,7 +79,7 @@ contract Election {
     uint256 public immutable minAnonymitySet;
 
     string public title;
-    string[] private _candidates;
+    string[] internal _candidates;
 
     // ---------------------------------------------------------------------
     // State
@@ -74,9 +89,10 @@ contract Election {
     uint256 public registeredCount;
 
     /// @dev Our own nullifier set. We deliberately do NOT use Semaphore's
-    ///      validateProof()/nullifier storage (see vote()).
+    ///      validateProof()/nullifier storage (see _useProof()).
     mapping(uint256 => bool) public nullifierUsed;
-    uint256[] private _tally;
+    /// @dev Votes per candidate (first preferences, for ranked ballots), kept live.
+    uint256[] internal _tally;
     uint256 public totalVotes;
 
     constructor(
@@ -91,7 +107,7 @@ contract Election {
     ) {
         if (address(semaphore_) == address(0)) revert ZeroAddress();
         if (candidates_.length < 2) revert TooFewCandidates();
-        if (candidates_.length > MAX_CANDIDATES) revert TooManyCandidates();
+        if (candidates_.length > _maxCandidates()) revert TooManyCandidates();
         if (!(block.timestamp < registrationEnd_ && registrationEnd_ <= votingStart_ && votingStart_ < votingEnd_)) {
             revert InvalidSchedule();
         }
@@ -123,39 +139,99 @@ contract Election {
     }
 
     // ---------------------------------------------------------------------
+    // Hooks for concrete elections
+    // ---------------------------------------------------------------------
+
+    /// @dev Upper bound on candidates, checked in the constructor.
+    function _maxCandidates() internal pure virtual returns (uint256);
+
+    /// @dev Result once voting has ended; more than one entry means a tie.
+    function _winners() internal view virtual returns (uint256[] memory);
+
+    // ---------------------------------------------------------------------
     // Registration (public, linked to the wallet; carries no vote)
     // ---------------------------------------------------------------------
 
     /// @param identityCommitment The voter's Semaphore identity commitment,
     ///        generated client-side. The secret behind it never leaves the browser.
     function register(uint256 identityCommitment) external {
-        if (block.timestamp >= registrationEnd) revert RegistrationClosed();
-        if (!isWhitelisted[msg.sender]) revert NotWhitelisted();
-        if (hasRegistered[msg.sender]) revert AlreadyRegistered();
+        _register(msg.sender, identityCommitment);
+    }
 
-        hasRegistered[msg.sender] = true;
+    /// @notice Register on behalf of `wallet`, which signed
+    ///         Register(wallet, identityCommitment) off-chain (EIP-712). Anyone can
+    ///         submit it (e.g. a relayer paying gas); they can't change the commitment.
+    /// @param signature 65-byte ECDSA (r, s, v) from an EOA, or anything a
+    ///        contract wallet accepts via ERC-1271.
+    function registerFor(address wallet, uint256 identityCommitment, bytes calldata signature) external {
+        if (!_isValidSignature(wallet, registerDigest(wallet, identityCommitment), signature)) {
+            revert InvalidSignature();
+        }
+        _register(wallet, identityCommitment);
+    }
+
+    function _register(address wallet, uint256 identityCommitment) internal {
+        if (block.timestamp >= registrationEnd) revert RegistrationClosed();
+        if (!isWhitelisted[wallet]) revert NotWhitelisted();
+        if (hasRegistered[wallet]) revert AlreadyRegistered();
+
+        hasRegistered[wallet] = true;
         registeredCount++;
 
         // Reverts on a zero/out-of-field commitment or one already in the tree.
         semaphore.addMember(groupId, identityCommitment);
 
-        emit Registered(msg.sender, identityCommitment);
+        emit Registered(wallet, identityCommitment);
+    }
+
+    /// @notice EIP-712 domain separator. Computed live so it follows block.chainid.
+    function domainSeparator() public view returns (bytes32) {
+        return keccak256(abi.encode(_DOMAIN_TYPEHASH, _NAME_HASH, _VERSION_HASH, block.chainid, address(this)));
+    }
+
+    /// @notice The digest `wallet` signs to authorize registerFor.
+    function registerDigest(address wallet, uint256 identityCommitment) public view returns (bytes32) {
+        bytes32 structHash = keccak256(abi.encode(REGISTER_TYPEHASH, wallet, identityCommitment));
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
+    }
+
+    /// @dev ECDSA for EOAs (low-s only, so each signature has one valid encoding),
+    ///      falling back to ERC-1271 for contract wallets (and EIP-7702 accounts).
+    function _isValidSignature(address signer, bytes32 digest, bytes calldata signature)
+        internal
+        view
+        returns (bool)
+    {
+        if (signature.length == 65) {
+            bytes32 r = bytes32(signature[0:32]);
+            bytes32 s = bytes32(signature[32:64]);
+            uint8 v = uint8(signature[64]);
+            if (uint256(s) <= _HALF_N && (v == 27 || v == 28)) {
+                address recovered = ecrecover(digest, v, r, s);
+                // ecrecover returns 0 on failure; signer is never 0 (whitelist forbids it).
+                if (recovered != address(0) && recovered == signer) return true;
+            }
+        }
+        if (signer.code.length == 0) return false;
+        (bool ok, bytes memory ret) =
+            signer.staticcall(abi.encodeWithSelector(_ERC1271_MAGIC, digest, signature));
+        return ok && ret.length >= 32 && abi.decode(ret, (bytes32)) == bytes32(_ERC1271_MAGIC);
     }
 
     // ---------------------------------------------------------------------
     // Voting (anonymous; anyone may submit, msg.sender is never read)
     // ---------------------------------------------------------------------
 
-    /// @param proof Semaphore proof whose `message` is the candidate index
-    ///        and whose `scope` is this election's scope.
-    function vote(ISemaphore.SemaphoreProof calldata proof) external {
+    /// @dev Every check a vote needs except the ballot itself, then burns the
+    ///      nullifier. A subclass's vote() MUST (1) check that proof.message is the
+    ///      canonical encoding of a valid ballot, (2) call this, (3) record the ballot.
+    function _useProof(ISemaphore.SemaphoreProof calldata proof) internal {
         if (block.timestamp < votingStart || block.timestamp >= votingEnd) revert VotingNotOpen();
         if (registeredCount < minAnonymitySet) revert AnonymitySetTooSmall();
 
         // Without this, one identity could generate proofs for many scopes
         // (= many distinct nullifiers) and vote many times.
         if (proof.scope != scope) revert WrongScope();
-        if (proof.message >= _candidates.length) revert InvalidCandidate();
 
         // Semaphore accepts recently superseded roots too. A proof against an
         // older root reveals the voter registered early (a smaller anonymity
@@ -173,10 +249,7 @@ contract Election {
         if (!semaphore.verifyProof(groupId, proof)) revert InvalidProof();
 
         nullifierUsed[proof.nullifier] = true;
-        _tally[proof.message]++;
         totalVotes++;
-
-        emit VoteCast(proof.nullifier, proof.message);
     }
 
     // ---------------------------------------------------------------------
@@ -187,32 +260,16 @@ contract Election {
         return _candidates;
     }
 
-    /// @notice Live tally, cannot be hidden by construction.
+    /// @notice Live votes per candidate (first preferences for ranked ballots);
+    ///         cannot be hidden by construction.
     function tally() external view returns (uint256[] memory) {
         return _tally;
     }
 
-    /// @notice FPTP result: every candidate index with the maximum count
-    ///         (more than one entry means a tie).
-    function winners() external view returns (uint256[] memory result) {
+    /// @notice Final result: every winning candidate index (more than one = tie).
+    function winners() external view returns (uint256[] memory) {
         if (block.timestamp < votingEnd) revert ElectionNotOver();
-
-        uint256 best;
-        uint256 count;
-        for (uint256 i = 0; i < _tally.length; i++) {
-            if (_tally[i] > best) {
-                best = _tally[i];
-                count = 1;
-            } else if (_tally[i] == best) {
-                count++;
-            }
-        }
-
-        result = new uint256[](count);
-        uint256 j;
-        for (uint256 i = 0; i < _tally.length; i++) {
-            if (_tally[i] == best) result[j++] = i;
-        }
+        return _winners();
     }
 
     function phase() external view returns (string memory) {
