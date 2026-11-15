@@ -17,6 +17,12 @@ Every existing crypto voting system requires either some level of trust in a coo
 Goblett cuts through all of these drawbacks by being USDC native, having no coordinator privileges, and relying only on wallet
 signatures and locally stored secretes, while maintaining minimal drawbacks (see limitations + mitigants).
 
-## Architecture
+## Core Architecture
 
 ### Why not use wallets for semaphore secretes?
+
+## Front-End Implementation
+
+## Limitations + Mitigants
+
+## Grok Bot Usage (for SpaceXSI Bounty)
