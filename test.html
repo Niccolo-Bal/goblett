@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MetaMask Login</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 4rem auto; padding: 0 1rem; }
+    button { padding: .7rem 1.2rem; font-size: 1rem; cursor: pointer; }
+    #status { margin-top: 1rem; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>Sign in</h1>
+  <button id="login">Log in with MetaMask</button>
+  <p id="status"></p>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const button = document.getElementById("login");
+    const setStatus = (msg) => (statusEl.textContent = msg);
+    const METAMASK_IDS = new Set(["io.metamask", "io.metamask.flask"]);
+    const announced = [];
+
+    function isMetaMaskInfo(info) {
+      return !!(info && (METAMASK_IDS.has(info.rdns) || METAMASK_IDS.has(info.walletId)));
+    }
+
+    function isMetaMaskProvider(provider) {
+      return !!(provider && provider.isMetaMask && !provider.isBraveWallet);
+    }
+
+    // Collect wallets as they announce. This has to happen before the click:
+    // MetaMask only opens its popup if eth_requestAccounts runs in the click
+    // itself, with no await before it.
+    window.addEventListener("eip6963:announceProvider", (event) => {
+      const detail = event.detail;
+      if (!detail || !detail.info || !detail.info.uuid || !detail.provider) return;
+      if (!announced.some((item) => item.info.uuid === detail.info.uuid)) announced.push(detail);
+    });
+    try { window.dispatchEvent(new Event("eip6963:requestProvider")); } catch (error) {}
+
+    function metaMaskProvider() {
+      const ethereum = window.ethereum;
+      if (isMetaMaskProvider(ethereum)) return ethereum;
+      const list = ethereum && Array.isArray(ethereum.providers) ? ethereum.providers : [];
+      const injected = list.find(isMetaMaskProvider);
+      if (injected) return injected;
+      const match = announced.find((detail) => isMetaMaskInfo(detail.info));
+      return match ? match.provider : null;
+    }
+
+    function addressFrom(result) {
+      if (Array.isArray(result) && typeof result[0] === "string" && result[0].indexOf("0x") === 0) return result[0];
+      const permissions = Array.isArray(result) ? result : [];
+      for (let i = 0; i < permissions.length; i++) {
+        const caveats = permissions[i] && permissions[i].caveats || [];
+        for (let j = 0; j < caveats.length; j++) {
+          const value = caveats[j] && caveats[j].value;
+          if (Array.isArray(value) && typeof value[0] === "string" && value[0].indexOf("0x") === 0) return value[0];
+        }
+      }
+      return "";
+    }
+
+    function showAddress(address) {
+      if (!address) return;
+      setStatus("Wallet ID: " + address);
+      button.disabled = false;
+    }
+
+    function showError(error) {
+      if (error && error.code === 4001) setStatus("Request rejected.");
+      else if (error && error.code === -32002) setStatus("MetaMask already has a request waiting. Close its window, click the fox icon, and approve or reject that request.");
+      else setStatus("Error: " + ((error && error.message) || error));
+      button.disabled = false;
+    }
+
+    button.addEventListener("click", () => {
+      const provider = metaMaskProvider();
+      if (!provider || typeof provider.request !== "function") {
+        setStatus(window.location.protocol === "file:"
+          ? "MetaMask cannot inject into a file opened from disk. Open this page from http://127.0.0.1 instead."
+          : "MetaMask not detected in this Chrome profile. Install or enable the extension, then reload.");
+        return;
+      }
+
+      let pending;
+      try {
+        pending = provider.request({
+          method: "wallet_requestPermissions",
+          params: [{ eth_accounts: {} }],
+        });
+      } catch (error) {
+        showError(error);
+        return;
+      }
+
+      button.disabled = true;
+      setStatus("MetaMask opened a separate window. Select an account there and click Connect. If you do not see that window, look behind Chrome or on the taskbar.");
+
+      if (typeof provider.on === "function") {
+        provider.on("accountsChanged", (accounts) => showAddress(accounts && accounts[0]));
+      }
+
+      const poll = setInterval(() => {
+        if (provider.selectedAddress) {
+          clearInterval(poll);
+          showAddress(provider.selectedAddress);
+        }
+      }, 400);
+
+      Promise.resolve(pending).then(
+        (result) => {
+          clearInterval(poll);
+          const address = addressFrom(result) || provider.selectedAddress;
+          if (address) showAddress(address);
+          else showError(new Error("MetaMask closed without a selected account. Select an account in its window and click Connect."));
+        },
+        (error) => {
+          clearInterval(poll);
+          showError(error);
+        }
+      );
+    });
+  </script>
+</body>
+</html>

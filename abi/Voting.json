@@ -1,0 +1,100 @@
+[
+  {
+    "type": "function",
+    "name": "submitVote",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "name": "v",
+        "type": "tuple",
+        "components": [
+          { "name": "proposalId", "type": "uint256" },
+          { "name": "choice", "type": "uint8" },
+          { "name": "deadline", "type": "uint256" }
+        ]
+      },
+      { "name": "sig", "type": "bytes" },
+      { "name": "proof", "type": "bytes32[]" }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "proposalInfo",
+    "stateMutability": "view",
+    "inputs": [{ "name": "proposalId", "type": "uint256" }],
+    "outputs": [
+      { "name": "numChoices", "type": "uint8" },
+      { "name": "endTime", "type": "uint64" },
+      { "name": "exists", "type": "bool" }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "tally",
+    "stateMutability": "view",
+    "inputs": [
+      { "name": "proposalId", "type": "uint256" },
+      { "name": "choice", "type": "uint8" }
+    ],
+    "outputs": [{ "name": "", "type": "uint256" }]
+  },
+  {
+    "type": "function",
+    "name": "hasVoted",
+    "stateMutability": "view",
+    "inputs": [
+      { "name": "proposalId", "type": "uint256" },
+      { "name": "voter", "type": "address" }
+    ],
+    "outputs": [{ "name": "", "type": "bool" }]
+  },
+  {
+    "type": "function",
+    "name": "merkleRoot",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "bytes32" }]
+  },
+  {
+    "type": "function",
+    "name": "voteHook",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "address" }]
+  },
+  {
+    "type": "function",
+    "name": "createProposal",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      { "name": "numChoices", "type": "uint8" },
+      { "name": "endTime", "type": "uint64" }
+    ],
+    "outputs": [{ "name": "proposalId", "type": "uint256" }]
+  },
+  {
+    "type": "function",
+    "name": "setMerkleRoot",
+    "stateMutability": "nonpayable",
+    "inputs": [{ "name": "root", "type": "bytes32" }],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "setVoteHook",
+    "stateMutability": "nonpayable",
+    "inputs": [{ "name": "hook", "type": "address" }],
+    "outputs": []
+  },
+  {
+    "type": "event",
+    "name": "VoteCast",
+    "inputs": [
+      { "name": "proposalId", "type": "uint256", "indexed": true },
+      { "name": "signer", "type": "address", "indexed": true },
+      { "name": "choice", "type": "uint8", "indexed": false },
+      { "name": "submitter", "type": "address", "indexed": true }
+    ]
+  }
+]
