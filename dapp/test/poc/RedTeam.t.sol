@@ -156,6 +156,11 @@ contract RedTeamTest is Test {
     }
 
     // ---- R1 (Scout/Red): duplicate whitelist entries made minAnonymitySet unreachable.
+    function test_dupWhitelist_rejectedAtDeploy() public {
+        vm.expectRevert(Election.DuplicateWhitelistEntry.selector);
+        new RankedChoiceElection(ISemaphore(address(mock)), "d", _cands(3), _wl3(alice, alice, bob), regEnd, vStart, vEnd, 3);
+    }
+
     /// Original PoC (bricks voting on unfixed code); kept as documentation, skipped once the fix lands.
     function test_dupWhitelist_bricksVoting_original() public {
         try new RankedChoiceElection(ISemaphore(address(mock)), "d", _cands(3), _wl3(alice, alice, bob), regEnd, vStart, vEnd, 3) returns (RankedChoiceElection) {} catch { vm.skip(true); }
