@@ -29,12 +29,13 @@ Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + repo
 | # | Title | Severity | Goal | Status |
 |---|-------|----------|------|--------|
 | R2-1 | Duplicate whitelist entries can brick voting | Low | 7 | Fixed `52f67ed4` |
-| R2-2 | Frontend bypasses Semaphore and publishes wallet-to-ballot on-chain | Critical | 1 | Open, awaiting design decision |
+| R2-2 | Frontend bypasses Semaphore and publishes wallet-to-ballot on-chain | Critical | 1 | Confirmed by Red (local chain), awaiting fix go-ahead |
 | R2-3 | `RelayReward.relay()` pays for any unseen id, so it can be drained | Critical | n/a (funds) | Open, Red verifying on local chain |
-| R2-4 | Relayer Nostr private key is committed and shipped to browsers | High | 4 | Open, key must be rotated |
+| R2-4 | Relayer Nostr private key is committed and shipped to browsers | High | 4 | Confirmed by Red, key must be rotated |
 | R2-5 | `VoteLedger.record()` may be permissionless (ballot stuffing) | High? | 2, 4 | Unconfirmed |
 | R2-6 | Smaller relayer issues | Low | 7 | Open |
 | R2-7 | UI and relayer trust served JSON files over the chain | Medium | 3, 4 | Open |
+| R2-8 | Relayer reads request bodies with no size limit | Medium | 7 | Open |
 
 **R2-1.** The constructor checked `minAnonymitySet` against the raw `whitelist_.length`, but only distinct wallets can register. With a whitelist like `[alice, alice, bob]` and `minAnonymitySet = 3`, voting reverts `AnonymitySetTooSmall` forever, even at 100% turnout. Found by Scout, reproduced by Red (`test_dupWhitelist_bricksVoting`). Fix: the constructor reverts with `DuplicateWhitelistEntry`, so the raw length equals the distinct count. Test: `test_constructor_revertsOnDuplicateWhitelistEntry`. All 131 Foundry tests pass.
 
@@ -49,6 +50,8 @@ Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + repo
 **R2-6.** The relayer `require`s seven modules that aren't committed, so it can't run from the repo. It also answers any origin (`CORS *`), so any site the voter visits can spend its gas, and its sign-in message has no nonce or domain, so it can be replayed.
 
 **R2-7.** `main.html` and the relayer only check that `vote-ledger.json` and `allowlist.json` have matching roots. Neither file is compared against on-chain state, so whoever serves `site/` decides which ledger and allowlist voters sign for. Separately, `scripts/networks.js` falls back to `network.json` (Arc Testnet) when `ARC_NETWORK` is unset, so the relayer targets testnet with `RELAYER_PRIVATE_KEY` by default. Fix: read the roots and addresses from the chain, and default `ARC_NETWORK` explicitly.
+
+**Round 2 notes.** Red confirmed R2-2 end to end: one vote through `/nostr-vote` made dev wallet `0x7099…79C8` and its choices public via `VoteRecorded`. For R2-4, the key is also returned by unauthenticated `GET /info` and `GET /nostr`. On `main`/`Grok` the relayer doesn't start (`Cannot find module './voteMessage'`), so Red tested branch `frontend_` (`49ab5c1`). About 21k `node_modules` files are committed to `main`. Agreed fix direction: Nostr notes carry only the Semaphore `vote(proof)` payload, posted with throwaway keys and an election tag, and the relay reward is paid inside `vote()`. Red's regression suite is at `dapp/test/poc/RedTeam.t.sol` (`4c30968`).
 
 ### Commits
 
