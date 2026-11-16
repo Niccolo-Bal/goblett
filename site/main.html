@@ -315,6 +315,67 @@ document.addEventListener('DOMContentLoaded', async function() {
     }).observe(ballot, { childList: true, subtree: true });
   }
 
+  const CHAIN_ID = 31337;
+  const BALLOT_OPTIONS = [
+    { name: 'Prop A', options: ['Yes', 'No'] },
+    { name: 'Prop B', options: ['Yes', 'No'] },
+    { name: 'Pick one candidate', options: ['Candidate A', 'Candidate B', 'Candidate C', 'Candidate D'] },
+    { name: 'Rank the candidates', options: ['Candidate A', 'Candidate B', 'Candidate C', 'Candidate D'] }
+  ];
+  let voteLedger = null;
+  let allowlist = null;
+
+  function voteHash(contractAddress, merkleRoot, voter, ballotIds, choiceCounts, choices) {
+    const coder = ethers.AbiCoder.defaultAbiCoder();
+    return ethers.keccak256(coder.encode(
+      ['uint256', 'address', 'bytes32', 'address', 'bytes32', 'bytes32', 'bytes32'],
+      [
+        CHAIN_ID,
+        contractAddress,
+        merkleRoot,
+        voter,
+        ethers.keccak256(coder.encode(['uint8[]'], [ballotIds])),
+        ethers.keccak256(coder.encode(['uint256[]'], [choiceCounts])),
+        ethers.keccak256(coder.encode(['uint256[]'], [choices]))
+      ]
+    ));
+  }
+
+  function encodeBallot(votes) {
+    const ballotIds = [];
+    const choiceCounts = [];
+    const choices = [];
+    votes.forEach(function (vote) {
+      const id = BALLOT_OPTIONS.findIndex(function (ballot) { return ballot.name === vote.name; });
+      if (id < 0) throw new Error('Unknown ballot: ' + vote.name);
+      const indexes = vote.choices.map(function (label) {
+        const wanted = String(label).trim().toLowerCase();
+        const at = BALLOT_OPTIONS[id].options.findIndex(function (option) { return option.toLowerCase() === wanted; });
+        if (at < 0) throw new Error('Unknown choice ' + label);
+        return at;
+      });
+      ballotIds.push(id);
+      choiceCounts.push(indexes.length);
+      indexes.forEach(function (index) { choices.push(index); });
+    });
+    return { ballotIds: ballotIds, choiceCounts: choiceCounts, choices: choices };
+  }
+
+  function loadTree() {
+    if (voteLedger && allowlist) return Promise.resolve();
+    return Promise.all([
+      fetch('vote-ledger.json', { cache: 'no-store' }).then(function (response) { return response.json(); }),
+      fetch('allowlist.json', { cache: 'no-store' }).then(function (response) { return response.json(); })
+    ]).then(function (files) {
+      voteLedger = files[0];
+      allowlist = files[1];
+      if (!voteLedger.address || !voteLedger.merkleRoot || String(voteLedger.merkleRoot).toLowerCase() !== String(allowlist.root).toLowerCase()) {
+        throw new Error('The Merkle root does not match the vote ledger.');
+      }
+    });
+  }
+  loadTree().catch(function () {});
+
   button.addEventListener('click', async function () {
     const votes = collectVotes();
     if (!votes.length) return;
@@ -322,13 +383,55 @@ document.addEventListener('DOMContentLoaded', async function() {
       status.textContent = 'The Nostr key is missing. Reload the page.';
       return;
     }
+    let address = '';
+    try { address = sessionStorage.getItem('goblett-wallet-id') || ''; } catch (error) {}
+    if (!address || !window.ethereum || !window.ethers) {
+      lastSubmissionMessage = 'Sign in with MetaMask before voting. Each wallet can vote once.';
+      refreshButton();
+      return;
+    }
+    if (!voteLedger || !allowlist) {
+      status.textContent = 'Loading the Merkle tree. Submit again in a moment.';
+      loadTree().catch(function (error) { status.textContent = error.message || 'The Merkle tree is not deployed.'; });
+      return;
+    }
+    const membership = allowlist.proofs[address.toLowerCase()];
+    if (!membership) {
+      lastSubmissionMessage = 'This wallet is not on the Merkle tree.';
+      refreshButton();
+      return;
+    }
+    let encoded;
+    try {
+      encoded = encodeBallot(votes);
+    } catch (error) {
+      lastSubmissionMessage = error.message || 'The ballot could not be encoded.';
+      refreshButton();
+      return;
+    }
+    const hash = voteHash(voteLedger.address, voteLedger.merkleRoot, address, encoded.ballotIds, encoded.choiceCounts, encoded.choices);
+    status.textContent = 'Sign the vote in MetaMask. Each wallet can vote once.';
+    let signature;
+    try {
+      signature = await window.ethereum.request({ method: 'personal_sign', params: [hash, address] });
+    } catch (error) {
+      lastSubmissionMessage = (error && error.message) || 'The vote was not signed.';
+      refreshButton();
+      return;
+    }
 
     button.dataset.pending = 'true';
     button.disabled = true;
     button.textContent = 'Sending...';
-    status.textContent = 'Publishing the vote with the Nostr key...';
+    status.textContent = 'Publishing the signed vote...';
     try {
-      const result = await relayer('/nostr-vote', { nsec: nostrKey.nsec, votes: votes });
+      const result = await relayer('/nostr-vote', {
+        nsec: nostrKey.nsec,
+        votes: votes,
+        voter: address,
+        signature: signature,
+        merkleProof: membership
+      });
       const id = result.nostr && result.nostr.id ? result.nostr.id : '';
       lastSubmissionMessage = result.count + ' vote' + (result.count === 1 ? '' : 's') + ' published with the Nostr key.' + (id ? ' ' + id : '');
     } catch (error) {

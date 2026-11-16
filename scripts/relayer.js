@@ -1,9 +1,14 @@
+const fs = require('fs');
 const http = require('http');
+const path = require('path');
 const { ethers } = require('ethers');
 const { votePayload } = require('./voteMessage');
 const { electionsFor, assertWhitelisted } = require('./elections');
 const { publishNostr, nostrAccount } = require('./nostr');
 const { settleVote } = require('./settle-vote');
+const { commitVote } = require('./election-call');
+const { encodeVotes } = require('./ballots');
+const { assertCast } = require('./vote-signature');
 
 // Public Hardhat development account #0. It is only used for the local node.
 const HARDHAT_ACCOUNT_0 = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
@@ -132,16 +137,72 @@ const server = http.createServer(async (request, response) => {
         lines.push(name + ': ' + picked.join(', '));
       });
       if (lines.length < 2) throw new Error('Select at least one answer.');
+      if (!ethers.isAddress(body.voter) || typeof body.signature !== 'string' || !Array.isArray(body.merkleProof)) {
+        throw new Error('Sign the vote with a wallet on the Merkle tree.');
+      }
+      const ledgerFile = path.join(__dirname, '..', 'contracts', 'vote-ledger.json');
+      const allowFile = path.join(__dirname, '..', 'site', 'allowlist.json');
+      if (!fs.existsSync(ledgerFile) || !fs.existsSync(allowFile)) {
+        throw new Error('Deploy the vote ledger before recording a vote.');
+      }
+      const deployed = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
+      const allowlist = JSON.parse(fs.readFileSync(allowFile, 'utf8'));
+      if (!deployed.merkleRoot || deployed.merkleRoot.toLowerCase() !== String(allowlist.root).toLowerCase()) {
+        throw new Error('The Merkle root does not match the vote ledger.');
+      }
+      const encoded = encodeVotes(cleaned);
+      const network = await provider.getNetwork();
+      const voter = assertCast(
+        network.chainId,
+        deployed.address,
+        deployed.merkleRoot,
+        body.voter,
+        encoded.ballotIds,
+        encoded.choiceCounts,
+        encoded.choices,
+        body.signature,
+        body.merkleProof
+      );
+      const ledger = new ethers.Contract(deployed.address, ['function hasVoted(address) view returns (bool)'], provider);
+      if (await ledger.hasVoted(voter)) throw new Error('This wallet already voted.');
       const note = lines.join('\n');
-      const nostr = await publishNostr(note);
-      console.log('Nostr vote', nostr.id, 'from', nostr.npub);
+      const committed = await commitVote({
+        votes: cleaned,
+        voter: voter,
+        signature: body.signature,
+        merkleProof: body.merkleProof
+      });
+      let nostr = null;
+      try {
+        nostr = await publishNostr(note);
+        console.log('Nostr vote', nostr.id, 'from', nostr.npub);
+      } catch (error) {
+        send(response, 200, {
+          count: cleaned.length,
+          voter: voter,
+          recordTransaction: committed.transaction,
+          nostrError: error.message
+        });
+        return;
+      }
       const settlement = await settleVote({
         npub: account.npub,
         note,
         votes: cleaned,
-        event: nostr.event
+        event: nostr.event,
+        proof: body.proof || null,
+        ranking: Array.isArray(body.ranking) ? body.ranking : null,
+        election: body.election || null,
+        voter: voter,
+        signature: body.signature,
+        merkleProof: body.merkleProof
       });
-      console.log('Reward', settlement.chain.reward, 'paid to', settlement.chain.relayer, 'in', settlement.chain.transaction);
+      if (settlement.chain.kind === 'fptp' || settlement.chain.kind === 'ranked') {
+        console.log('Election vote', settlement.chain.kind, settlement.chain.transaction, 'on', settlement.chain.contract);
+      }
+      if (settlement.chain.reward) {
+        console.log('Reward', settlement.chain.reward, 'paid to', settlement.chain.relayer, 'in', settlement.chain.transaction);
+      }
       send(response, 200, {
         count: cleaned.length,
         nostr: { id: nostr.id, npub: nostr.npub, relays: nostr.relays },

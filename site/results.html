@@ -41,7 +41,7 @@
       <button id="refresh" type="button">Refresh</button>
     </div>
     <h1>Results</h1>
-    <p>Every total on this page is read from the vote ledger on the local chain.</p>
+    <p>Every total on this page is read from the local chain. An election contract reports its own tally, and its winner once voting has ended.</p>
     <p id="status" role="status">Reading the chain...</p>
     <div id="ballots"></div>
   </main>
@@ -52,7 +52,7 @@
       'function ballotCount() view returns (uint256)',
       'function voteCount() view returns (uint256)',
       'function ballot(uint256 ballotId) view returns (string section, string name, uint8 mode, string[] options)',
-      'function vote(uint256 index) view returns (bytes32 eventId, string voter, uint8 ballotId, uint256[] choices)',
+      'function vote(uint256 index) view returns (bytes32 eventId, address voter, uint8 ballotId, uint256[] choices)',
       'function result(uint256 ballotId) view returns (bool hasVotes, bool tie, uint256 winnerIndex, uint256[] counts)'
     ];
     const modes = ['Yes or no', 'Choose one', 'Ranked choice'];
@@ -178,12 +178,80 @@
           });
         }
         render(ballots, votes);
+        const electionCount = await renderElections();
         const noun = voteCount === 1 ? 'vote' : 'votes';
-        status.textContent = voteCount + ' ' + noun + ' on the chain.';
+        status.textContent = voteCount + ' ' + noun + ' on the chain.' + (electionCount ? ' ' + electionCount + ' election contract' + (electionCount === 1 ? '' : 's') + ' included.' : '');
       } catch (error) {
         root.replaceChildren();
         status.textContent = (error && error.message) || 'The chain could not be read.';
       }
+    }
+
+    const electionAbi = [
+      'function title() view returns (string)',
+      'function candidates() view returns (string[])',
+      'function tally() view returns (uint256[])',
+      'function winners() view returns (uint256[])',
+      'function phase() view returns (string)'
+    ];
+
+    async function renderElections() {
+      let file;
+      try {
+        const response = await fetch('elections.json', { cache: 'no-store' });
+        if (!response.ok) return 0;
+        file = await response.json();
+      } catch (error) {
+        return 0;
+      }
+      const listed = Array.isArray(file.elections) ? file.elections : [];
+      if (!listed.length) return 0;
+      const provider = new ethers.JsonRpcProvider(RPC, 31337, { staticNetwork: true });
+      let shown = 0;
+      for (const item of listed) {
+        if (!item || !ethers.isAddress(item.address)) continue;
+        const code = await provider.getCode(item.address);
+        if (code === '0x') continue;
+        const election = new ethers.Contract(item.address, electionAbi, provider);
+        const candidates = await election.candidates();
+        const tally = (await election.tally()).map(function (count) { return Number(count); });
+        let winners = null;
+        try {
+          winners = (await election.winners()).map(function (index) { return Number(index); });
+        } catch (error) {
+          winners = null;
+        }
+        let phase = '';
+        try { phase = await election.phase(); } catch (error) { phase = ''; }
+        const card = el('article', 'card');
+        card.appendChild(el('p', 'eyebrow', (phase || 'Election') + ' · contract tally'));
+        card.appendChild(el('h2', '', await election.title()));
+        let winner = 'Not final yet';
+        if (winners && winners.length === 1) winner = candidates[winners[0]] || 'Unknown';
+        else if (winners && winners.length > 1) winner = 'Tie';
+        const line = el('p', 'winner');
+        line.appendChild(text('Winner: '));
+        line.appendChild(el('span', '', winner));
+        card.appendChild(line);
+        const counts = el('ul', 'counts');
+        const max = tally.reduce(function (best, count) { return Math.max(best, count); }, 0);
+        candidates.forEach(function (name, index) {
+          const count = tally[index] || 0;
+          const row = document.createElement('li');
+          const label = el('div', 'name');
+          label.appendChild(text(name));
+          const bar = el('span', 'bar');
+          bar.style.width = max ? Math.round((count / max) * 100) + '%' : '0%';
+          label.appendChild(bar);
+          row.appendChild(label);
+          row.appendChild(el('span', '', String(count)));
+          counts.appendChild(row);
+        });
+        card.appendChild(counts);
+        root.appendChild(card);
+        shown += 1;
+      }
+      return shown;
     }
 
     document.getElementById('refresh').addEventListener('click', refresh);

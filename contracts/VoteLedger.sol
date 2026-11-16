@@ -4,8 +4,10 @@ pragma solidity ^0.8.28;
 /// @notice Stores each relayed Goblett vote and reports the winner from those votes.
 contract VoteLedger {
     error EmptyEvent();
-    error EmptyVoter();
     error AlreadyRecorded(bytes32 eventId);
+    error AlreadyVoted(address voter);
+    error InvalidSignature();
+    error NotInTree();
     error UnknownBallot(uint256 ballotId);
     error BadVote();
 
@@ -22,23 +24,31 @@ contract VoteLedger {
 
     struct Cast {
         bytes32 eventId;
-        string voter;
+        address voter;
         uint8 ballotId;
         uint256[] choices;
     }
 
+    /// @dev secp256k1n / 2. A larger s is the malleable twin of a valid signature.
+    uint256 private constant _HALF_N = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
+
+    bytes32 public immutable merkleRoot;
     Ballot[] private _ballots;
     Cast[] private _votes;
     mapping(bytes32 => bool) public recorded;
+    mapping(address => bool) public hasVoted;
 
-    event VoteRecorded(bytes32 indexed eventId, uint8 indexed ballotId, string voter, uint256[] choices);
+    event VoteRecorded(bytes32 indexed eventId, uint8 indexed ballotId, address indexed voter, uint256[] choices);
 
     constructor(
         string[] memory sections,
         string[] memory names,
         uint8[] memory modes,
-        string[][] memory options
+        string[][] memory options,
+        bytes32 merkleRoot_
     ) {
+        if (merkleRoot_ == bytes32(0)) revert BadVote();
+        merkleRoot = merkleRoot_;
         uint256 count = sections.length;
         if (count == 0 || count != names.length || count != modes.length || count != options.length) revert BadVote();
         for (uint256 i = 0; i < count; i++) {
@@ -76,24 +86,39 @@ contract VoteLedger {
     function vote(uint256 index)
         external
         view
-        returns (bytes32 eventId, string memory voter, uint8 ballotId, uint256[] memory choices)
+        returns (bytes32 eventId, address voter, uint8 ballotId, uint256[] memory choices)
     {
         Cast storage item = _votes[index];
         return (item.eventId, item.voter, item.ballotId, item.choices);
     }
 
+    /// @notice Hash the wallet signs. It binds the ballot to this contract, chain, and Merkle root.
+    function voteHash(address voter, uint8[] calldata ballotIds, uint256[] calldata choiceCounts, uint256[] calldata choices)
+        external
+        view
+        returns (bytes32)
+    {
+        return _voteHash(voter, ballotIds, choiceCounts, choices);
+    }
+
     function record(
         bytes32 eventId,
-        string calldata voter,
+        address voter,
+        bytes calldata signature,
+        bytes32[] calldata merkleProof,
         uint8[] calldata ballotIds,
         uint256[] calldata choiceCounts,
         uint256[] calldata choices
     ) external {
         if (eventId == bytes32(0)) revert EmptyEvent();
-        if (bytes(voter).length == 0 || bytes(voter).length > 90) revert EmptyVoter();
+        if (voter == address(0)) revert InvalidSignature();
+        if (hasVoted[voter]) revert AlreadyVoted(voter);
         if (recorded[eventId]) revert AlreadyRecorded(eventId);
+        if (merkleProof.length > 32 || !_inTree(voter, merkleProof)) revert NotInTree();
+        if (!_signedBy(voter, signature, ballotIds, choiceCounts, choices)) revert InvalidSignature();
         if (ballotIds.length == 0 || ballotIds.length != choiceCounts.length) revert BadVote();
 
+        hasVoted[voter] = true;
         recorded[eventId] = true;
         bool[] memory seen = new bool[](_ballots.length);
         uint256 cursor = 0;
@@ -135,9 +160,60 @@ contract VoteLedger {
         return (true, tie, winnerIndex, counts);
     }
 
+    function _voteHash(address voter, uint8[] calldata ballotIds, uint256[] calldata choiceCounts, uint256[] calldata choices)
+        private
+        view
+        returns (bytes32)
+    {
+        return keccak256(
+            abi.encode(
+                block.chainid,
+                address(this),
+                merkleRoot,
+                voter,
+                keccak256(abi.encode(ballotIds)),
+                keccak256(abi.encode(choiceCounts)),
+                keccak256(abi.encode(choices))
+            )
+        );
+    }
+
+    function _signedBy(
+        address voter,
+        bytes calldata signature,
+        uint8[] calldata ballotIds,
+        uint256[] calldata choiceCounts,
+        uint256[] calldata choices
+    ) private view returns (bool) {
+        if (signature.length != 65) return false;
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+        assembly {
+            r := calldataload(signature.offset)
+            s := calldataload(add(signature.offset, 32))
+            v := byte(0, calldataload(add(signature.offset, 64)))
+        }
+        if (uint256(s) > _HALF_N || (v != 27 && v != 28)) return false;
+        bytes32 digest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _voteHash(voter, ballotIds, choiceCounts, choices)));
+        address recovered = ecrecover(digest, v, r, s);
+        return recovered != address(0) && recovered == voter;
+    }
+
+    /// @dev Sorted-pair Merkle proof. Leaves are keccak256(abi.encodePacked(address)).
+    function _inTree(address voter, bytes32[] calldata proof) private view returns (bool) {
+        bytes32 computed = keccak256(abi.encodePacked(voter));
+        for (uint256 i = 0; i < proof.length; i++) {
+            bytes32 sibling = proof[i];
+            if (computed < sibling) computed = keccak256(abi.encodePacked(computed, sibling));
+            else computed = keccak256(abi.encodePacked(sibling, computed));
+        }
+        return computed == merkleRoot;
+    }
+
     function _store(
         bytes32 eventId,
-        string calldata voter,
+        address voter,
         uint8 ballotId,
         uint256[] calldata choices,
         uint256 cursor,
