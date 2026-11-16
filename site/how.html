@@ -14,7 +14,7 @@
     h1 { margin: 28px 0 8px; font-family: "Space Grotesk", system-ui, sans-serif; font-size: 48px; line-height: 1.05; letter-spacing: -0.03em; }
     h2 { margin: 32px 0 8px; font-family: "Space Grotesk", system-ui, sans-serif; font-size: 28px; letter-spacing: -0.03em; }
     p { margin: 0 0 12px; color: #374151; }
-    .back { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 12px; background: #fff; border: 1px solid #e5e7eb; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; box-shadow: 0 8px 24px rgba(17, 24, 39, .06); }
+    .back { display: inline-flex; align-items: center; min-height: 40px; margin-right: 8px; padding: 0 14px; border-radius: 12px; background: #fff; border: 1px solid #e5e7eb; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; box-shadow: 0 8px 24px rgba(17, 24, 39, .06); }
     .back:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid #2456e8; outline-offset: 3px; }
     .card { margin-top: 16px; padding: 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 8px 24px rgba(17, 24, 39, .06); }
     label { display: block; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #4b5563; }
@@ -30,6 +30,7 @@
 <body>
   <main>
     <a class="back" href="Login.html">Back to sign in</a>
+    <a class="back" href="results.html">Results</a>
     <h1>How this works</h1>
     <p>Goblett keeps the signing key in MetaMask. The ballot asks MetaMask to sign, then a relayer submits that signature on the chain.</p>
 
@@ -41,7 +42,7 @@
 
     <h2>Ways to vote</h2>
     <p>A yes or no election has two options. A choose-one election asks you to pick one candidate out of several, such as four names. A ranked-choice election asks you to click candidates in the order you prefer. Click a ranked candidate again to take them off the ranking.</p>
-    <p>Yes or no answers are the votes the current contract counts. Choose-one and ranked-choice answers stay on the ballot so those formats can be signed the same way.</p>
+    <p>Yes or no, choose-one, and ranked-choice answers are stored on the vote ledger. The results page reads that ledger from the chain and shows who won.</p>
 
     <h2>Sending the vote</h2>
     <p>Submit signs the yes or no selections. The relayer checks the signature and the whitelist, then sends the transaction. You do not pay that gas from MetaMask.</p>

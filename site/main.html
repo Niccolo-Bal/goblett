@@ -139,6 +139,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   #vote-submit-button:hover { background: #1f2937; }
   #vote-submit-button:focus-visible { outline: 3px solid #2456e8; outline-offset: 3px; }
   #vote-submit-button:disabled { opacity: .48; cursor: not-allowed; }
+  #goblett-results { min-height: 52px; padding: 0 18px; display: inline-flex; align-items: center; border-radius: 12px; background: #fff; border: 1px solid #e5e7eb; color: #111827; font: 600 15px Inter, system-ui, sans-serif; text-decoration: none; }
+  #goblett-results:hover { background: #f3f4f6; }
+  #goblett-results:focus-visible { outline: 3px solid #2456e8; outline-offset: 3px; }
   @media (max-width: 640px) { #vote-submit-bar { padding: 10px 12px 14px; } #vote-submit-inner { flex-wrap: wrap; gap: 8px; } #vote-contract-address { flex-basis: 100%; } #vote-submit-status { flex-basis: calc(100% - 150px); } }
 </style>
 <div id="vote-submit-bar">
@@ -146,6 +149,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     <p id="goblett-proof">Sign in to prove wallet ownership.</p>
     <p id="goblett-nostr"></p>
     <span id="vote-submit-status" role="status" aria-live="polite">Select at least one answer to submit.</span>
+    <a id="goblett-results" href="results.html">Results</a>
     <button id="vote-submit-button" type="button" disabled>Submit votes</button>
   </div>
 </div>
@@ -271,13 +275,19 @@ document.addEventListener('DOMContentLoaded', async function() {
       if (section && section.hidden) return [];
       const heading = article.querySelector('h2, h3');
       const name = heading ? heading.textContent.trim() : '';
-      const pressed = Array.from(article.querySelectorAll('button[aria-pressed="true"]'));
+      const pressed = Array.from(article.querySelectorAll('button[aria-pressed="true"]')).map(function (button) {
+        const mark = button.querySelector('span');
+        const rank = mark ? Number(mark.textContent.trim()) : 0;
+        return {
+          value: (button.dataset.choice || button.textContent).trim(),
+          rank: Number.isFinite(rank) ? rank : 0
+        };
+      }).filter(function (choice) { return choice.value; });
+      if (article.dataset.mode === 'ranked') pressed.sort(function (a, b) { return a.rank - b.rank; });
       if (!name || !pressed.length) return [];
       return [{
         name: name,
-        choices: pressed.map(function (button) {
-          return (button.dataset.choice || button.textContent).trim();
-        }).filter(Boolean)
+        choices: pressed.map(function (choice) { return choice.value; })
       }];
     }).filter(function (vote) { return vote.choices.length; });
   }

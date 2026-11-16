@@ -265,7 +265,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     let template = JSON.parse(templateEl.textContent);
     template = template.replace(
       'justify-content: center; gap: 40px; padding: 48px 24px" data-canvas-width="1280" data-canvas-height="800" data-document-role="page" data-label="Login">',
-      'justify-content: center; gap: 40px; padding: 48px 24px; position: relative" data-canvas-width="1280" data-canvas-height="800" data-document-role="page" data-label="Login">\n<a id="goblett-how" href="how.html" style="position: absolute; top: 20px; left: 20px; z-index: 5; min-height: 40px; padding: 0 14px; display: inline-flex; align-items: center; border-radius: 12px; background: #ffffff; border: 1px solid #e5e7eb; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; box-shadow: 0 8px 24px rgba(17, 24, 39, .06)">How this works</a>'
+      'justify-content: center; gap: 40px; padding: 48px 24px; position: relative" data-canvas-width="1280" data-canvas-height="800" data-document-role="page" data-label="Login">\n<nav id="goblett-nav"><a id="goblett-how" href="how.html">How this works</a><a id="goblett-results" href="results.html">Results</a></nav>'
     ).replace(
       '<a href="Main.dc.html" style="',
       '<button type="button" id="goblett-signin" style="border:0; cursor:pointer; font-family:inherit; padding:0; '
@@ -326,11 +326,15 @@ document.addEventListener('DOMContentLoaded', async function() {
   #goblett-status { min-height: 42px; }
   #goblett-status.is-pending { color: #2456e8; }
   #goblett-status.is-error { color: #b91c1c; }
-  #goblett-how {
+  #goblett-nav {
     position: fixed;
     top: 20px;
     left: 20px;
     z-index: 20;
+    display: flex;
+    gap: 8px;
+  }
+  #goblett-how, #goblett-results {
     min-height: 40px;
     padding: 0 14px;
     display: inline-flex;
@@ -344,8 +348,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     text-decoration: none;
     box-shadow: 0 8px 24px rgba(17, 24, 39, .06);
   }
-  #goblett-how:hover { background: #f3f4f6; }
-  #goblett-how:focus-visible { outline: 3px solid #2456e8; outline-offset: 3px; }
+  #goblett-how:hover, #goblett-results:hover { background: #f3f4f6; }
+  #goblett-how:focus-visible, #goblett-results:focus-visible { outline: 3px solid #2456e8; outline-offset: 3px; }
 </style>
 <div id="goblett-wallet-slot" hidden></div>
 <script src="nostr-key.js"><\/script>

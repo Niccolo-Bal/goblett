@@ -3,7 +3,13 @@ require('@nomicfoundation/hardhat-toolbox');
 // The live election contracts are the Foundry project in dapp/.
 // This config only builds the earlier yes/no demo kept in legacy/hardhat.
 module.exports = {
-  solidity: '0.8.28',
+  solidity: {
+    version: '0.8.28',
+    settings: {
+      optimizer: { enabled: true, runs: 200 },
+      viaIR: true
+    }
+  },
   paths: {
     sources: './contracts',
     tests: './legacy/hardhat/test',
