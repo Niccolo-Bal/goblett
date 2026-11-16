@@ -36,6 +36,10 @@ Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + repo
 | R2-6 | Smaller relayer issues | Low | 7 | Open |
 | R2-7 | UI and relayer trust served JSON files over the chain | Medium | 3, 4 | Open |
 | R2-8 | Relayer reads request bodies with no size limit | Medium | 7 | Open |
+| R2-9 | Shared Nostr key lets anyone delete pending vote notes (NIP-09) | High | 7 | Design, fixed by per-vote throwaway keys |
+| R2-10 | Flooding the shared key or tag can get it throttled on public relays | Medium | 7 | Design |
+| R2-11 | Relayer can withhold a vote; voter has no inclusion check | Medium | 4, 7 | Design |
+| R2-12 | Reward to `msg.sender` can be front-run by copying calldata | Low | n/a | Design note |
 
 **R2-1.** The constructor checked `minAnonymitySet` against the raw `whitelist_.length`, but only distinct wallets can register. With a whitelist like `[alice, alice, bob]` and `minAnonymitySet = 3`, voting reverts `AnonymitySetTooSmall` forever, even at 100% turnout. Found by Scout, reproduced by Red (`test_dupWhitelist_bricksVoting`). Fix: the constructor reverts with `DuplicateWhitelistEntry`, so the raw length equals the distinct count. Test: `test_constructor_revertsOnDuplicateWhitelistEntry`. All 131 Foundry tests pass.
 
@@ -52,6 +56,8 @@ Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + repo
 **R2-7.** `main.html` and the relayer only check that `vote-ledger.json` and `allowlist.json` have matching roots. Neither file is compared against on-chain state, so whoever serves `site/` decides which ledger and allowlist voters sign for. Separately, `scripts/networks.js` falls back to `network.json` (Arc Testnet) when `ARC_NETWORK` is unset, so the relayer targets testnet with `RELAYER_PRIVATE_KEY` by default. Fix: read the roots and addresses from the chain, and default `ARC_NETWORK` explicitly.
 
 **Round 2 notes.** Red confirmed R2-2 end to end: one vote through `/nostr-vote` made dev wallet `0x7099…79C8` and its choices public via `VoteRecorded`. For R2-4, the key is also returned by unauthenticated `GET /info` and `GET /nostr`. On `main`/`Grok` the relayer doesn't start (`Cannot find module './voteMessage'`), so Red tested branch `frontend_` (`49ab5c1`). About 21k `node_modules` files are committed to `main`. Agreed fix direction: Nostr notes carry only the Semaphore `vote(proof)` payload, posted with throwaway keys and an election tag, and the relay reward is paid inside `vote()`. Red's regression suite is at `dapp/test/poc/RedTeam.t.sol` (`4c30968`).
+
+**Nostr relay design (R2-9 to R2-12).** Target is Arc Testnet (Niccolo). With one shared `nsec`, anyone counts as the author of every vote note and can delete them with NIP-09 kind-5 events before a relayer sees them; throwaway keys per vote fix this. Junk under a shared key or tag can get it rate-limited on damus, nos.lol or primal, so relayers should run the `verifyProof` view and check `nullifierUsed` before spending gas, and can require NIP-13 proof-of-work. The UI should watch `nullifierUsed[nullifier]` and fall back to another relayer, or let the voter submit directly, if the vote doesn't land. If the reward goes to `msg.sender` inside `vote()`, mempool watchers can copy a relayer's calldata and take it; it doesn't hurt the vote, but nothing binds the relayer today.
 
 ### Commits
 
