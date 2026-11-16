@@ -24,6 +24,7 @@
     button:hover { background: #1f2937; }
     #cost-status { margin: 14px 0 0; min-height: 3em; color: #111827; }
     .muted { color: #4b5563; }
+    .key { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; color: #111827; word-break: break-all; }
   </style>
 </head>
 <body>
@@ -45,6 +46,12 @@
     <h2>Sending the vote</h2>
     <p>Submit signs the yes or no selections. The relayer checks the signature and the whitelist, then sends the transaction. You do not pay that gas from MetaMask.</p>
 
+    <h2>Nostr key</h2>
+    <p>Every person who opens Goblett uses this same Nostr key. The relayer signs its notes with it.</p>
+    <div class="card">
+      <p id="goblett-nostr" class="key"></p>
+    </div>
+
     <h2>Election cost</h2>
     <p>This reads the current gas price, then runs <code>transformElectionCost</code>. That function is the place for the cost formula. Until a formula is added, it returns nothing.</p>
     <div class="card">
@@ -56,6 +63,7 @@
       <p id="cost-status" role="status">Enter how many yes or no options the election has.</p>
     </div>
   </main>
+  <script src="nostr-key.js"></script>
   <script>
     // Replace this body when the cost formula is ready.
     // fees: { source, gasPrice, baseFee, priorityFee } with prices in wei.
@@ -115,6 +123,9 @@
       }
       throw lastError || new Error('No gas source answered.');
     }
+
+    const nostrLine = document.getElementById('goblett-nostr');
+    if (nostrLine && window.GOBLETT_NOSTR && window.GOBLETT_NOSTR.nsec) nostrLine.textContent = window.GOBLETT_NOSTR.nsec;
 
     const button = document.getElementById('cost-button');
     const countInput = document.getElementById('option-count');

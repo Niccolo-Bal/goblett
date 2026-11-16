@@ -2,6 +2,8 @@ const http = require('http');
 const { ethers } = require('ethers');
 const { votePayload } = require('./voteMessage');
 const { electionsFor, assertWhitelisted } = require('./elections');
+const { publishNostr, nostrAccount } = require('./nostr');
+const { settleVote } = require('./settle-vote');
 
 // Public Hardhat development account #0. It is only used for the local node.
 const HARDHAT_ACCOUNT_0 = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
@@ -90,9 +92,18 @@ const server = http.createServer(async (request, response) => {
   }
 
   try {
+    if (request.method === 'GET' && request.url === '/nostr') {
+      send(response, 200, await nostrAccount());
+      return;
+    }
+
     if (request.method === 'GET' && request.url === '/info') {
       const network = await provider.getNetwork();
-      send(response, 200, { chainId: network.chainId.toString(), relayer: relayer.address });
+      send(response, 200, {
+        chainId: network.chainId.toString(),
+        relayer: relayer.address,
+        nostr: await nostrAccount()
+      });
       return;
     }
 
@@ -102,6 +113,42 @@ const server = http.createServer(async (request, response) => {
     }
 
     const body = await readBody(request);
+
+    if (request.url === '/nostr-vote') {
+      const account = await nostrAccount();
+      if (!body.nsec || body.nsec !== account.nsec) {
+        send(response, 400, { error: 'The Nostr key does not match this relayer.' });
+        return;
+      }
+      const votes = Array.isArray(body.votes) ? body.votes : [];
+      const lines = ['Goblett vote'];
+      const cleaned = [];
+      votes.forEach((vote) => {
+        const name = String(vote && vote.name || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        const choices = Array.isArray(vote && vote.choices) ? vote.choices : [];
+        const picked = choices.map((choice) => String(choice).replace(/\s+/g, ' ').trim().slice(0, 80)).filter(Boolean);
+        if (!name || !picked.length) return;
+        cleaned.push({ name, choices: picked });
+        lines.push(name + ': ' + picked.join(', '));
+      });
+      if (lines.length < 2) throw new Error('Select at least one answer.');
+      const note = lines.join('\n');
+      const nostr = await publishNostr(note);
+      console.log('Nostr vote', nostr.id, 'from', nostr.npub);
+      const settlement = await settleVote({
+        npub: account.npub,
+        note,
+        votes: cleaned,
+        event: nostr.event
+      });
+      console.log('Reward', settlement.chain.reward, 'paid to', settlement.chain.relayer, 'in', settlement.chain.transaction);
+      send(response, 200, {
+        count: cleaned.length,
+        nostr: { id: nostr.id, npub: nostr.npub, relays: nostr.relays },
+        settlement
+      });
+      return;
+    }
 
     if (request.url === '/elections') {
       if (!ethers.isAddress(body.contract) || !ethers.isAddress(body.voter)) {
@@ -145,7 +192,21 @@ const server = http.createServer(async (request, response) => {
       const transaction = await voting.submitSignedVotes(vote.voter, vote.questionIds, vote.choices, body.signature);
       const receipt = await transaction.wait();
       console.log('Relayed', vote.questionIds.length, 'votes for', vote.voter, 'in', receipt.hash);
-      send(response, 200, { transaction: receipt.hash, voter: vote.voter, count: vote.questionIds.length });
+      const answers = vote.questionIds.map((id, index) => id + ' ' + (vote.choices[index] ? 'yes' : 'no')).join(', ');
+      const note = 'Goblett vote recorded for ' + vote.voter + '. ' + answers + '. Transaction ' + receipt.hash + '.';
+      let nostr = null;
+      try {
+        nostr = await publishNostr(note);
+        console.log('Nostr', nostr.id, 'from', nostr.npub, 'accepted by', nostr.relays.join(', '));
+      } catch (error) {
+        console.error('Nostr publish failed:', error.message);
+      }
+      send(response, 200, {
+        transaction: receipt.hash,
+        voter: vote.voter,
+        count: vote.questionIds.length,
+        nostr: nostr ? { id: nostr.id, npub: nostr.npub, relays: nostr.relays } : null
+      });
       return;
     }
 
@@ -159,4 +220,7 @@ const server = http.createServer(async (request, response) => {
 server.listen(port, '127.0.0.1', () => {
   console.log('Goblett relayer listening on http://127.0.0.1:' + port);
   console.log('Submitting through', rpcUrl, 'as', relayer.address);
+  publishNostr('Goblett relayer is online.')
+    .then((nostr) => console.log('Nostr', nostr.id, 'from', nostr.npub, 'accepted by', nostr.relays.join(', ')))
+    .catch((error) => console.error('Nostr publish failed:', error.message));
 });

@@ -132,6 +132,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   #vote-contract-address { min-width: 0; flex: 1; height: 52px; padding: 0 14px; border: 1px solid #e5e7eb; border-radius: 12px; font: inherit; color: #111827; background: #fafaf9; }
   #vote-contract-address:focus { outline: 3px solid #2456e8; outline-offset: 2px; border-color: #2456e8; }
   #goblett-proof { flex: 1 0 100%; margin: 0 4px 4px; color: #4b5563; }
+  #goblett-nostr { flex: 1 0 100%; margin: 0; color: #111827; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; word-break: break-all; }
   #goblett-proof.is-proven { color: #2456e8; }
   #vote-submit-status { flex: 1; min-width: 140px; color: #4b5563; }
   #vote-submit-button { min-height: 52px; padding: 0 22px; border: 0; border-radius: 12px; background: #111827; color: white; font: 600 15px Inter, system-ui, sans-serif; cursor: pointer; }
@@ -143,18 +144,25 @@ document.addEventListener('DOMContentLoaded', async function() {
 <div id="vote-submit-bar">
   <div id="vote-submit-inner">
     <p id="goblett-proof">Sign in to prove wallet ownership.</p>
-    <input id="vote-contract-address" aria-label="Voting contract address on Hardhat" placeholder="Voting contract address on local Hardhat">
+    <p id="goblett-nostr"></p>
     <span id="vote-submit-status" role="status" aria-live="polite">Select at least one answer to submit.</span>
     <button id="vote-submit-button" type="button" disabled>Submit votes</button>
   </div>
 </div>
+<script src="nostr-key.js"><\/script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"><\/script>
 <script>
 (function () {
   const button = document.getElementById('vote-submit-button');
-  const addressInput = document.getElementById('vote-contract-address');
   const status = document.getElementById('vote-submit-status');
   const proof = document.getElementById('goblett-proof');
+  const nostrLine = document.getElementById('goblett-nostr');
+  const nostrKey = window.GOBLETT_NOSTR || null;
+  if (nostrLine && nostrKey && nostrKey.nsec) nostrLine.textContent = 'Nostr key ' + nostrKey.nsec;
+  if (proof && nostrKey && nostrKey.npub) {
+    proof.className = 'is-proven';
+    proof.textContent = 'Using Nostr key ' + nostrKey.npub;
+  }
   const RELAYER = 'http://127.0.0.1:8787';
   let lastSubmissionMessage = '';
 
@@ -167,7 +175,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         body: JSON.stringify(body)
       });
     } catch (error) {
-      throw new Error('The Hardhat relayer is not running. Start it with npm run relayer.');
+      throw new Error('The relayer is not running. Start it with npm run relayer.');
     }
     const payload = await response.json().catch(function () { return {}; });
     if (!response.ok) throw new Error(payload.error || 'The relayer rejected the signed message.');
@@ -180,8 +188,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       [ethers.id('Goblett vote'), chainId, contractAddress, voter, questionIds, choices]
     ));
   }
-
-  try { addressInput.value = localStorage.getItem('vote-contract-address') || ''; } catch (error) {}
 
   function ownershipMessage(address) {
     return 'Goblett\\n\\nSign to prove you own this wallet.\\nThe key stays in MetaMask.\\n\\nWallet: ' + address;
@@ -205,6 +211,11 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   function showProof(address, signature) {
     if (!proof) return;
+    if (nostrKey && nostrKey.npub) {
+      proof.className = 'is-proven';
+      proof.textContent = 'Using Nostr key ' + nostrKey.npub;
+      return;
+    }
     if (!address || !signature) {
       proof.className = '';
       proof.textContent = 'Sign in to prove wallet ownership.';
@@ -254,39 +265,21 @@ document.addEventListener('DOMContentLoaded', async function() {
     applyingElections = false;
   }
 
-  async function loadElections() {
-    const contract = addressInput.value.trim();
-    let voter = '';
-    try { voter = sessionStorage.getItem('goblett-wallet-id') || ''; } catch (error) {}
-    if (!ethers.isAddress(contract) || !ethers.isAddress(voter)) {
-      whitelistNote = 'Sign in and enter the contract to see which elections this wallet can vote in.';
-      applyElections(null);
-      refreshButton();
-      return;
-    }
-    try {
-      const result = await relayer('/elections', { contract: contract, voter: voter });
-      applyElections(result.elections);
-      const names = result.elections.map(function (election) { return election.name; });
-      whitelistNote = names.length
-        ? 'Whitelisted for ' + names.join(' and ') + '.'
-        : 'This wallet is not whitelisted for an election.';
-    } catch (error) {
-      applyElections(null);
-      whitelistNote = error.message || 'Could not check the whitelist.';
-    }
-    refreshButton();
-  }
-
   function collectVotes() {
-    return Array.from(document.querySelectorAll('article')).flatMap(function (article, questionId) {
+    return Array.from(document.querySelectorAll('article')).flatMap(function (article) {
       const section = article.closest('section');
       if (section && section.hidden) return [];
-      if ((article.dataset.mode || 'yesno') !== 'yesno') return [];
-      const selected = article.querySelector('button[aria-pressed="true"]');
-      if (!selected) return [];
-      return [{ questionId: questionId, choice: (selected.dataset.choice || selected.textContent).trim().toLowerCase() === 'yes' }];
-    });
+      const heading = article.querySelector('h2, h3');
+      const name = heading ? heading.textContent.trim() : '';
+      const pressed = Array.from(article.querySelectorAll('button[aria-pressed="true"]'));
+      if (!name || !pressed.length) return [];
+      return [{
+        name: name,
+        choices: pressed.map(function (button) {
+          return (button.dataset.choice || button.textContent).trim();
+        }).filter(Boolean)
+      }];
+    }).filter(function (vote) { return vote.choices.length; });
   }
 
   let whitelistNote = '';
@@ -305,11 +298,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       setTimeout(refreshButton, 0);
     }
   });
-  addressInput.addEventListener('change', function () {
-    try { localStorage.setItem('vote-contract-address', addressInput.value.trim()); } catch (error) {}
-    lastSubmissionMessage = '';
-    loadElections();
-  });
   const ballot = document.querySelector('main');
   if (ballot) {
     new MutationObserver(function () {
@@ -319,54 +307,22 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   button.addEventListener('click', async function () {
     const votes = collectVotes();
-    const contractAddress = addressInput.value.trim();
     if (!votes.length) return;
-    if (!window.ethereum) { status.textContent = 'Install or open a wallet such as MetaMask to submit.'; return; }
-    if (!window.ethers) { status.textContent = 'Could not load ethers.js. Check your connection and reload.'; return; }
-    if (!ethers.isAddress(contractAddress)) { status.textContent = 'Enter the deployed voting contract address.'; addressInput.focus(); return; }
+    if (!nostrKey || !nostrKey.nsec) {
+      status.textContent = 'The Nostr key is missing. Reload the page.';
+      return;
+    }
 
     button.dataset.pending = 'true';
     button.disabled = true;
     button.textContent = 'Sending...';
-    status.textContent = 'Connecting to MetaMask...';
+    status.textContent = 'Publishing the vote with the Nostr key...';
     try {
-      const ethereum = window.ethereum;
-      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
-      const voter = accounts && accounts[0];
-      if (!ethers.isAddress(voter)) throw new Error('Select an account in MetaMask.');
-      status.textContent = 'Checking open votes with the Hardhat relayer...';
-      const prepared = await relayer('/prepare', {
-        contract: contractAddress,
-        voter: voter,
-        questionIds: votes.map(function (vote) { return vote.questionId; }),
-        choices: votes.map(function (vote) { return vote.choice; })
-      });
-      if (!prepared.questionIds.length) {
-        lastSubmissionMessage = 'This wallet has already submitted these votes.';
-        return;
-      }
-      const payload = votePayload(prepared.chainId, contractAddress, voter, prepared.questionIds, prepared.choices);
-      status.textContent = 'Sign the vote message in MetaMask. The signed message is sent to the relayer.';
-      button.textContent = 'Signing...';
-      const signature = await ethereum.request({
-        method: 'personal_sign',
-        params: [payload, voter]
-      });
-      const recovered = ethers.verifyMessage(ethers.getBytes(payload), signature);
-      if (recovered.toLowerCase() !== voter.toLowerCase()) throw new Error('The signature does not match this wallet.');
-      button.textContent = 'Relaying...';
-      status.textContent = 'Sending the signed message to the Hardhat relayer...';
-      const result = await relayer('/relay', {
-        contract: contractAddress,
-        voter: voter,
-        questionIds: prepared.questionIds,
-        choices: prepared.choices,
-        signature: signature
-      });
-      lastSubmissionMessage = prepared.questionIds.length + ' vote' + (prepared.questionIds.length === 1 ? '' : 's') + ' signed by ' + voter + ' and submitted by the Hardhat relayer. ' + result.transaction;
+      const result = await relayer('/nostr-vote', { nsec: nostrKey.nsec, votes: votes });
+      const id = result.nostr && result.nostr.id ? result.nostr.id : '';
+      lastSubmissionMessage = result.count + ' vote' + (result.count === 1 ? '' : 's') + ' published with the Nostr key.' + (id ? ' ' + id : '');
     } catch (error) {
-      if (error && error.code === 4001) lastSubmissionMessage = 'Signature rejected. You can try again.';
-      else lastSubmissionMessage = (error && (error.shortMessage || error.message)) || 'Vote submission failed.';
+      lastSubmissionMessage = (error && error.message) || 'Vote submission failed.';
     } finally {
       delete button.dataset.pending;
       button.textContent = 'Submit votes';
@@ -375,7 +331,6 @@ document.addEventListener('DOMContentLoaded', async function() {
   });
 
   refreshButton();
-  loadElections();
 })();
 <\/script>`;
     template = template.replace('</body>', voteSubmissionMarkup + '</body>');

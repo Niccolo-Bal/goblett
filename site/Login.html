@@ -322,6 +322,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     word-break: break-all;
   }
   #goblett-wallet .proof { color: #2456e8; }
+  #goblett-nostr { margin: 12px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: #111827; text-align: center; word-break: break-all; }
   #goblett-status { min-height: 42px; }
   #goblett-status.is-pending { color: #2456e8; }
   #goblett-status.is-error { color: #b91c1c; }
@@ -347,6 +348,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   #goblett-how:focus-visible { outline: 3px solid #2456e8; outline-offset: 3px; }
 </style>
 <div id="goblett-wallet-slot" hidden></div>
+<script src="nostr-key.js"><\/script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"><\/script>
 <script>
 (function () {
@@ -361,6 +363,11 @@ document.addEventListener('DOMContentLoaded', async function() {
   wallet.hidden = true;
   wallet.innerHTML = '<div class="mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4.5 10.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div><div class="label">Wallet ID</div><div class="full"></div><div class="proof"></div></div>';
   link.insertAdjacentElement("beforebegin", wallet);
+
+  var nostrLine = document.createElement("p");
+  nostrLine.id = "goblett-nostr";
+  if (window.GOBLETT_NOSTR && window.GOBLETT_NOSTR.nsec) nostrLine.textContent = "Nostr key " + window.GOBLETT_NOSTR.nsec;
+  status.insertAdjacentElement("afterend", nostrLine);
 
   window.addEventListener("eip6963:announceProvider", function (event) {
     var detail = event.detail;

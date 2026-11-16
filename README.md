@@ -1,13 +1,32 @@
-# Hardhat voting demo
+<header>
+  <h1 style="border-bottom: none;">Goblett.xyz: Seamless Private Voting</h1>
+  <p class="subtitle">Made for UBC Hackathon 2026</p>
+</header>
 
-The page submits each selected Yes/No answer as a batch to the `Voting` contract on a local Hardhat network. Each wallet can vote once per question. The contract stores yes/no totals and emits a `VoteCast` event for every answer.
+<br>
 
-## Run locally
+## Intro
 
-1. Install the project dependencies with `npm install`.
-2. Start the local chain with `npm run node` and leave it running.
-3. In another terminal, deploy the contract with `npm run deploy:local`. Copy the printed contract address.
-4. In your wallet, add a local network at `http://127.0.0.1:8545` with chain ID `31337`. Import one of the test accounts printed by the Hardhat node; these accounts are for local development only.
-5. Open `main.html`, enter the deployed contract address in the bottom bar, select answers, and submit. Confirm the transaction in your wallet.
+Goblett is the first zero-trust on-chain voting system on Arc, using the [Semaphore Protocol](https://semaphore.pse.dev/) 
+and OHTTPS to mask on and off-chain identities and a first of its kind Web2 relay protocol that requires no trust or gas from 
+registered wallets.
 
-The page uses ethers.js from jsDelivr and requires a browser wallet such as MetaMask. Do not use Hardhat test accounts or this demo contract with real funds.
+Every existing crypto voting system requires either some level of trust in a coordinator (GAMI), are straight-up just not anonymous
+(Polymesh), or in the best case require voters to create burner wallets on every election and, to attain the level of anonymity of Goblett, fund that wallet through privacy cryptocurrencies (which voters hardly ever do).
+
+Goblett cuts through all of these drawbacks by being USDC native, having no coordinator privileges, and relying only on wallet
+signatures and locally stored secretes, while maintaining minimal drawbacks (see limitations + mitigants).
+
+## Core Architecture
+
+<center>
+<img src="media/Goblett%20Diagram.png" alt="A sleeping orange cat">
+</center>
+
+### Why not use wallets for semaphore secretes?
+
+## Front-End Implementation
+
+## Limitations + Mitigants
+
+## Grok Bot Usage (for SpaceXSI Bounty)
