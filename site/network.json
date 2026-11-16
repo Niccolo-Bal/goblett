@@ -1,0 +1,13 @@
+{
+  "id": "testnet",
+  "chainId": 5042002,
+  "chainIdHex": "0x4cef52",
+  "name": "Arc Testnet",
+  "rpcUrl": "https://rpc.testnet.arc.io",
+  "explorerUrl": "https://explorer.testnet.arc.io",
+  "currency": {
+    "name": "USDC",
+    "symbol": "USDC",
+    "decimals": 18
+  }
+}

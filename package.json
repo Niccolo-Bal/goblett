@@ -1,0 +1,21 @@
+{
+  "name": "ubc-voting-demo",
+  "private": true,
+  "scripts": {
+    "node": "hardhat node",
+    "deploy:local": "ARC_NETWORK=local hardhat run scripts/deploy-network.js --network localhost",
+    "deploy:testnet": "ARC_NETWORK=testnet hardhat run scripts/deploy-network.js --network arcTestnet",
+    "deploy:mainnet": "ARC_NETWORK=mainnet hardhat run scripts/deploy-network.js --network arc",
+    "validator": "node scripts/run-validator.js",
+    "relayer": "node scripts/relayer.js",
+    "test": "hardhat test"
+  },
+  "dependencies": {
+    "ethers": "^6.13.5",
+    "nostr-tools": "^2.26.1"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.19"
+  }
+}

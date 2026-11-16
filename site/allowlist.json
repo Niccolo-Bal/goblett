@@ -1,0 +1,11 @@
+{
+  "root": "0x91138898dea8e6ac60e39b5c988190ef65b17128f1a419b61db45273a1173cbb",
+  "proofs": {
+    "0x253d8209d37c28c62932f7cf644b608d53f1dde4": [
+      "0xa64c11cbed306ff47ae74119e98b98ae5062e7545cde7aa818f2605d8167d245"
+    ],
+    "0x1f16f31b800dbdcb5830b78979deb188eb5e93fd": [
+      "0xb18e371af5ceeb88a51bebadc818bc92604e5266fd14208d10e9008eecbb9ca2"
+    ]
+  }
+}

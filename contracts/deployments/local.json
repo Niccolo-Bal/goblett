@@ -1,0 +1,30 @@
+{
+  "id": "local",
+  "chainId": 31337,
+  "ledger": "0x59b670e9fA9D0A427751Af201D676719a970857b",
+  "merkleRoot": "0x70f83aaad879b99592059e8e45f9e39eb575453273130acf3ba12957a3f9c013",
+  "reward": "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1",
+  "rewardAmount": "10000000000000000",
+  "relayer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "voters": [
+    "0x253D8209D37C28c62932f7Cf644b608D53f1dDE4",
+    "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+  ],
+  "allowlist": {
+    "root": "0x70f83aaad879b99592059e8e45f9e39eb575453273130acf3ba12957a3f9c013",
+    "proofs": {
+      "0x253d8209d37c28c62932f7cf644b608d53f1dde4": [
+        "0x00314e565e0574cb412563df634608d76f5c59d9f817e85966100ec1d48005c0",
+        "0xe9707d0e6171f728f7473c24cc0432a9b07eaaf1efed6a137a4a8c12c79552d9"
+      ],
+      "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": [
+        "0xb18e371af5ceeb88a51bebadc818bc92604e5266fd14208d10e9008eecbb9ca2",
+        "0xe9707d0e6171f728f7473c24cc0432a9b07eaaf1efed6a137a4a8c12c79552d9"
+      ],
+      "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266": [
+        "0x7efdcd4c571fd2c1eb2f5bc2482965daf660730f07ccc08de50f2c742a436d2b"
+      ]
+    }
+  }
+}

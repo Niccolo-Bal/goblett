@@ -1,0 +1,24 @@
+{
+  "id": "testnet",
+  "chainId": 5042002,
+  "ledger": "0xde75a3Eb62A0AbB90C2278763f7e33f547497C4b",
+  "merkleRoot": "0x91138898dea8e6ac60e39b5c988190ef65b17128f1a419b61db45273a1173cbb",
+  "reward": "0x60f3D30b68ba51510be6BCE778f480607e3D1C2D",
+  "rewardAmount": "10000000000000000",
+  "relayer": "0x2b208916B57f5f5816F0Dca2e1BDA6f59D7Ea414",
+  "voters": [
+    "0x253D8209D37C28c62932f7Cf644b608D53f1dDE4",
+    "0x1f16f31B800DBdcB5830B78979deB188eb5E93fD"
+  ],
+  "allowlist": {
+    "root": "0x91138898dea8e6ac60e39b5c988190ef65b17128f1a419b61db45273a1173cbb",
+    "proofs": {
+      "0x253d8209d37c28c62932f7cf644b608d53f1dde4": [
+        "0xa64c11cbed306ff47ae74119e98b98ae5062e7545cde7aa818f2605d8167d245"
+      ],
+      "0x1f16f31b800dbdcb5830b78979deb188eb5e93fd": [
+        "0xb18e371af5ceeb88a51bebadc818bc92604e5266fd14208d10e9008eecbb9ca2"
+      ]
+    }
+  }
+}

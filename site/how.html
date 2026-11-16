@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How Goblett works</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; background: #fafaf9; color: #111827; font: 16px/1.5 Inter, system-ui, sans-serif; }
+    a { color: #2456e8; }
+    main { max-width: 720px; margin: 0 auto; padding: 28px 24px 80px; }
+    h1 { margin: 28px 0 8px; font-family: "Space Grotesk", system-ui, sans-serif; font-size: 48px; line-height: 1.05; letter-spacing: -0.03em; }
+    h2 { margin: 32px 0 8px; font-family: "Space Grotesk", system-ui, sans-serif; font-size: 28px; letter-spacing: -0.03em; }
+    p { margin: 0 0 12px; color: #374151; }
+    .back { display: inline-flex; align-items: center; min-height: 40px; margin-right: 8px; padding: 0 14px; border-radius: 12px; background: #fff; border: 1px solid #e5e7eb; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; box-shadow: 0 8px 24px rgba(17, 24, 39, .06); }
+    .back:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid #2456e8; outline-offset: 3px; }
+    .card { margin-top: 16px; padding: 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 8px 24px rgba(17, 24, 39, .06); }
+    label { display: block; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #4b5563; }
+    .row { display: flex; gap: 12px; align-items: center; margin-top: 10px; }
+    input { width: 120px; height: 48px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 12px; background: #fafaf9; font: inherit; color: #111827; }
+    button { height: 48px; padding: 0 18px; border: 0; border-radius: 12px; background: #111827; color: #fff; font: 600 15px Inter, system-ui, sans-serif; cursor: pointer; }
+    button:hover { background: #1f2937; }
+    #cost-status { margin: 14px 0 0; min-height: 3em; color: #111827; }
+    .muted { color: #4b5563; }
+    .key { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; color: #111827; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="Login.html">Back to sign in</a>
+    <a class="back" href="results.html">Results</a>
+    <h1>How this works</h1>
+    <p>Goblett keeps the signing key in MetaMask. The ballot asks MetaMask to sign, then a relayer submits that signature on the chain.</p>
+
+    <h2>Signing in</h2>
+    <p>Connect MetaMask and sign a message that names your wallet. The page checks that the signature recovers to that same address. The key never leaves the wallet.</p>
+
+    <h2>Who can vote</h2>
+    <p>Each election has a whitelist on the contract. The relayer reads that list from the chain and the ballot shows only the elections your wallet is on.</p>
+
+    <h2>Ways to vote</h2>
+    <p>A yes or no election has two options. A choose-one election asks you to pick one candidate out of several, such as four names. A ranked-choice election asks you to click candidates in the order you prefer. Click a ranked candidate again to take them off the ranking.</p>
+    <p>Yes or no, choose-one, and ranked-choice answers are stored on the vote ledger. The results page reads that ledger from the chain and shows who won.</p>
+
+    <h2>Sending the vote</h2>
+    <p>Submit signs the yes or no selections. The relayer checks the signature and the whitelist, then sends the transaction. You do not pay that gas from MetaMask.</p>
+
+    <h2>Nostr key</h2>
+    <p>Every person who opens Goblett uses this same Nostr key. The relayer signs its notes with it.</p>
+    <div class="card">
+      <p id="goblett-nostr" class="key"></p>
+    </div>
+
+    <h2>Election cost</h2>
+    <p>This reads the current gas price, then runs <code>transformElectionCost</code>. That function is the place for the cost formula. Until a formula is added, it returns nothing.</p>
+    <div class="card">
+      <label for="option-count">Yes or no options</label>
+      <div class="row">
+        <input id="option-count" type="number" min="1" step="1" value="4">
+        <button id="cost-button" type="button">Get current gas</button>
+      </div>
+      <p id="cost-status" role="status">Enter how many yes or no options the election has.</p>
+    </div>
+  </main>
+  <script src="nostr-key.js"></script>
+  <script>
+    // Replace this body when the cost formula is ready.
+    // fees: { source, gasPrice, baseFee, priorityFee } with prices in wei.
+    // yesNoCount: number of yes/no options in the election.
+    function transformElectionCost(fees, yesNoCount) {
+      return null;
+    }
+
+    function electionCost(fees, yesNoCount) {
+      return {
+        fees: fees,
+        yesNoCount: yesNoCount,
+        cost: transformElectionCost(fees, yesNoCount)
+      };
+    }
+
+    function formatWei(value) {
+      if (value == null) return 'unavailable';
+      const gwei = Number(value) / 1e9;
+      if (!Number.isFinite(gwei)) return value.toString();
+      return gwei.toLocaleString(undefined, { maximumFractionDigits: 4 }) + ' gwei';
+    }
+
+    async function rpc(url, method, params) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: method, params: params })
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.error) throw new Error((payload.error && payload.error.message) || 'The gas request failed.');
+      return payload.result;
+    }
+
+    async function currentGasFees() {
+      const sources = [
+        { name: 'Arc Testnet', url: 'https://rpc.testnet.arc.io' },
+        { name: 'Local Hardhat', url: 'http://127.0.0.1:8545' },
+        { name: 'Arc', url: 'https://rpc.mainnet.arc.io' }
+      ];
+      try {
+        const response = await fetch('network.json', { cache: 'no-store' });
+        if (response.ok) {
+          const network = await response.json();
+          if (network && network.rpcUrl) sources.unshift({ name: network.name || 'Configured chain', url: network.rpcUrl });
+        }
+      } catch (error) {}
+      let lastError = null;
+      for (const source of sources) {
+        try {
+          const gasPrice = BigInt(await rpc(source.url, 'eth_gasPrice', []));
+          let baseFee = null;
+          let priorityFee = null;
+          try {
+            const history = await rpc(source.url, 'eth_feeHistory', ['0x1', 'latest', [25]]);
+            const bases = history.baseFeePerGas || [];
+            if (bases.length) baseFee = BigInt(bases[bases.length - 1]);
+            const rewards = history.reward && history.reward[0];
+            if (rewards && rewards.length) priorityFee = BigInt(rewards[0]);
+          } catch (error) {}
+          return { source: source.name, gasPrice: gasPrice, baseFee: baseFee, priorityFee: priorityFee };
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError || new Error('No gas source answered.');
+    }
+
+    const nostrLine = document.getElementById('goblett-nostr');
+    if (nostrLine && window.GOBLETT_NOSTR && window.GOBLETT_NOSTR.nsec) nostrLine.textContent = window.GOBLETT_NOSTR.nsec;
+
+    const button = document.getElementById('cost-button');
+    const countInput = document.getElementById('option-count');
+    const status = document.getElementById('cost-status');
+
+    button.addEventListener('click', async function () {
+      const yesNoCount = Number(countInput.value);
+      if (!Number.isInteger(yesNoCount) || yesNoCount < 1) {
+        status.textContent = 'Enter a whole number of yes or no options.';
+        return;
+      }
+      button.disabled = true;
+      status.textContent = 'Reading the current gas price...';
+      try {
+        const fees = await currentGasFees();
+        const result = electionCost(fees, yesNoCount);
+        const lines = [
+          'Source: ' + fees.source,
+          'Gas price: ' + formatWei(fees.gasPrice),
+          'Base fee: ' + formatWei(fees.baseFee),
+          'Priority fee: ' + formatWei(fees.priorityFee),
+          'Yes or no options: ' + yesNoCount
+        ];
+        if (result.cost == null) lines.push('The cost transformation is not set yet.');
+        else lines.push('Estimated cost: ' + result.cost);
+        status.textContent = lines.join('\n');
+        status.style.whiteSpace = 'pre-line';
+      } catch (error) {
+        status.textContent = error.message || 'Could not read the gas price.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

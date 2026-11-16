@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goblett results</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; background: #fafaf9; color: #111827; font: 16px/1.5 Inter, system-ui, sans-serif; }
+    a { color: #2456e8; }
+    main { max-width: 760px; margin: 0 auto; padding: 28px 24px 80px; }
+    h1 { margin: 28px 0 8px; font-family: "Space Grotesk", system-ui, sans-serif; font-size: 48px; line-height: 1.05; letter-spacing: -0.03em; }
+    h2 { margin: 0; font-family: "Space Grotesk", system-ui, sans-serif; font-size: 28px; letter-spacing: -0.03em; }
+    h3 { margin: 18px 0 8px; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #4b5563; }
+    p { margin: 0 0 12px; color: #374151; }
+    .links { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .back, button { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 12px; background: #fff; border: 1px solid #e5e7eb; color: #111827; font: 600 14px Inter, system-ui, sans-serif; text-decoration: none; box-shadow: 0 8px 24px rgba(17, 24, 39, .06); cursor: pointer; }
+    button { background: #111827; border-color: #111827; color: #fff; box-shadow: none; }
+    button:hover { background: #1f2937; }
+    .back:hover { background: #f3f4f6; }
+    .back:focus-visible, button:focus-visible { outline: 3px solid #2456e8; outline-offset: 3px; }
+    .card { margin-top: 16px; padding: 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 8px 24px rgba(17, 24, 39, .06); }
+    .eyebrow { margin: 0 0 6px; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #4b5563; }
+    .winner { margin: 10px 0 0; font-weight: 600; color: #111827; }
+    .counts, .casts { list-style: none; margin: 12px 0 0; padding: 0; }
+    .counts li, .casts li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid #e5e7eb; }
+    .name { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .bar { height: 8px; border-radius: 999px; background: #2456e8; }
+    .voter { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: #4b5563; }
+    .choice { text-align: right; }
+    #status { min-height: 1.5em; color: #111827; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="links">
+      <a class="back" href="Login.html">Back to sign in</a>
+      <a class="back" href="main.html">Ballot</a>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+    <h1>Results</h1>
+    <p>Every total on this page is read from the chain. An election contract reports its own tally, and its winner once voting has ended.</p>
+    <p id="status" role="status">Reading the chain...</p>
+    <div id="ballots"></div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+  <script>
+    let network = { chainId: 31337, rpcUrl: 'http://127.0.0.1:8545', name: 'Local Hardhat' };
+    async function chainProvider() {
+      if (!chainProvider.cached) {
+        try {
+          const response = await fetch('network.json', { cache: 'no-store' });
+          if (response.ok) network = await response.json();
+        } catch (error) {}
+        chainProvider.cached = new ethers.JsonRpcProvider(network.rpcUrl, Number(network.chainId), { staticNetwork: true });
+      }
+      return chainProvider.cached;
+    }
+    const abi = [
+      'function ballotCount() view returns (uint256)',
+      'function voteCount() view returns (uint256)',
+      'function ballot(uint256 ballotId) view returns (string section, string name, uint8 mode, string[] options)',
+      'function vote(uint256 index) view returns (bytes32 eventId, address voter, uint8 ballotId, uint256[] choices)',
+      'function result(uint256 ballotId) view returns (bool hasVotes, bool tie, uint256 winnerIndex, uint256[] counts)'
+    ];
+    const modes = ['Yes or no', 'Choose one', 'Ranked choice'];
+    const status = document.getElementById('status');
+    const root = document.getElementById('ballots');
+
+    function text(value) {
+      return document.createTextNode(value == null ? '' : String(value));
+    }
+
+    function el(tag, className, value) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (value != null) node.appendChild(text(value));
+      return node;
+    }
+
+    function shortVoter(voter) {
+      const value = String(voter || '');
+      if (value.length <= 16) return value;
+      return value.slice(0, 8) + '…' + value.slice(-4);
+    }
+
+    async function loadLedger() {
+      const response = await fetch('vote-ledger.json', { cache: 'no-store' });
+      if (!response.ok) throw new Error('The vote ledger address file is missing.');
+      const file = await response.json();
+      if (!file.address) throw new Error('The vote ledger address file is missing.');
+      const provider = await chainProvider();
+      const code = await provider.getCode(file.address);
+      if (code === '0x') throw new Error('No vote ledger is deployed at ' + file.address + '.');
+      return new ethers.Contract(file.address, abi, provider);
+    }
+
+    function choiceLabel(ballot, indexes) {
+      const names = indexes.map(function (index) {
+        return ballot.options[Number(index)] || ('Option ' + index);
+      });
+      if (Number(ballot.mode) === 2) {
+        return names.map(function (name, index) { return (index + 1) + '. ' + name; }).join(', ');
+      }
+      return names.join(', ');
+    }
+
+    function render(ballots, votes) {
+      root.replaceChildren();
+      ballots.forEach(function (ballot) {
+        const card = el('article', 'card');
+        card.appendChild(el('p', 'eyebrow', ballot.section + ' · ' + (modes[ballot.mode] || 'Ballot')));
+        card.appendChild(el('h2', '', ballot.name));
+        let winner = 'No votes yet';
+        if (ballot.hasVotes && ballot.tie) winner = 'Tie';
+        else if (ballot.hasVotes) winner = ballot.options[ballot.winnerIndex] || 'Unknown';
+        const winnerLine = el('p', 'winner');
+        winnerLine.appendChild(text('Winner: '));
+        winnerLine.appendChild(el('span', '', winner));
+        card.appendChild(winnerLine);
+
+        const counts = el('ul', 'counts');
+        const max = ballot.counts.reduce(function (best, count) { return Math.max(best, count); }, 0);
+        ballot.options.forEach(function (option, index) {
+          const count = ballot.counts[index] || 0;
+          const item = document.createElement('li');
+          const name = el('div', 'name');
+          name.appendChild(text(option));
+          const bar = el('span', 'bar');
+          bar.style.width = max ? Math.round((count / max) * 100) + '%' : '0%';
+          name.appendChild(bar);
+          item.appendChild(name);
+          item.appendChild(el('span', '', String(count)));
+          counts.appendChild(item);
+        });
+        card.appendChild(counts);
+
+        const heading = el('h3', '', Number(ballot.mode) === 2 ? 'Rankings cast' : 'Votes cast');
+        card.appendChild(heading);
+        const list = el('ul', 'casts');
+        const cast = votes.filter(function (vote) { return vote.ballotId === ballot.id; });
+        if (!cast.length) list.appendChild(el('li', '', 'None yet'));
+        cast.forEach(function (vote) {
+          const item = document.createElement('li');
+          const voter = el('span', 'voter', shortVoter(vote.voter));
+          voter.title = vote.voter;
+          item.appendChild(voter);
+          item.appendChild(el('span', 'choice', choiceLabel(ballot, vote.choices)));
+          list.appendChild(item);
+        });
+        card.appendChild(list);
+        root.appendChild(card);
+      });
+    }
+
+    async function refresh() {
+      status.textContent = 'Reading the chain...';
+      try {
+        const ledger = await loadLedger();
+        const ballotCount = Number(await ledger.ballotCount());
+        const voteCount = Number(await ledger.voteCount());
+        const ballots = [];
+        for (let i = 0; i < ballotCount; i++) {
+          const [section, name, mode, options] = await ledger.ballot(i);
+          const outcome = await ledger.result(i);
+          ballots.push({
+            id: i,
+            section: section,
+            name: name,
+            mode: Number(mode),
+            options: options,
+            hasVotes: outcome.hasVotes,
+            tie: outcome.tie,
+            winnerIndex: Number(outcome.winnerIndex),
+            counts: outcome.counts.map(function (count) { return Number(count); })
+          });
+        }
+        const votes = [];
+        for (let i = 0; i < voteCount; i++) {
+          const cast = await ledger.vote(i);
+          votes.push({
+            eventId: cast.eventId,
+            voter: cast.voter,
+            ballotId: Number(cast.ballotId),
+            choices: cast.choices.map(function (choice) { return Number(choice); })
+          });
+        }
+        render(ballots, votes);
+        const electionCount = await renderElections();
+        const noun = voteCount === 1 ? 'vote' : 'votes';
+        status.textContent = voteCount + ' ' + noun + ' on ' + network.name + '.' + (electionCount ? ' ' + electionCount + ' election contract' + (electionCount === 1 ? '' : 's') + ' included.' : '');
+      } catch (error) {
+        root.replaceChildren();
+        status.textContent = (error && error.message) || 'The chain could not be read.';
+      }
+    }
+
+    const electionAbi = [
+      'function title() view returns (string)',
+      'function candidates() view returns (string[])',
+      'function tally() view returns (uint256[])',
+      'function winners() view returns (uint256[])',
+      'function phase() view returns (string)'
+    ];
+
+    async function renderElections() {
+      let file;
+      try {
+        const response = await fetch('elections.json', { cache: 'no-store' });
+        if (!response.ok) return 0;
+        file = await response.json();
+      } catch (error) {
+        return 0;
+      }
+      const listed = Array.isArray(file.elections) ? file.elections : [];
+      if (!listed.length) return 0;
+      const provider = await chainProvider();
+      let shown = 0;
+      for (const item of listed) {
+        if (!item || !ethers.isAddress(item.address)) continue;
+        const code = await provider.getCode(item.address);
+        if (code === '0x') continue;
+        const election = new ethers.Contract(item.address, electionAbi, provider);
+        const candidates = await election.candidates();
+        const tally = (await election.tally()).map(function (count) { return Number(count); });
+        let winners = null;
+        try {
+          winners = (await election.winners()).map(function (index) { return Number(index); });
+        } catch (error) {
+          winners = null;
+        }
+        let phase = '';
+        try { phase = await election.phase(); } catch (error) { phase = ''; }
+        const card = el('article', 'card');
+        card.appendChild(el('p', 'eyebrow', (phase || 'Election') + ' · contract tally'));
+        card.appendChild(el('h2', '', await election.title()));
+        let winner = 'Not final yet';
+        if (winners && winners.length === 1) winner = candidates[winners[0]] || 'Unknown';
+        else if (winners && winners.length > 1) winner = 'Tie';
+        const line = el('p', 'winner');
+        line.appendChild(text('Winner: '));
+        line.appendChild(el('span', '', winner));
+        card.appendChild(line);
+        const counts = el('ul', 'counts');
+        const max = tally.reduce(function (best, count) { return Math.max(best, count); }, 0);
+        candidates.forEach(function (name, index) {
+          const count = tally[index] || 0;
+          const row = document.createElement('li');
+          const label = el('div', 'name');
+          label.appendChild(text(name));
+          const bar = el('span', 'bar');
+          bar.style.width = max ? Math.round((count / max) * 100) + '%' : '0%';
+          label.appendChild(bar);
+          row.appendChild(label);
+          row.appendChild(el('span', '', String(count)));
+          counts.appendChild(row);
+        });
+        card.appendChild(counts);
+        root.appendChild(card);
+        shown += 1;
+      }
+      return shown;
+    }
+
+    document.getElementById('refresh').addEventListener('click', refresh);
+    refresh();
+  </script>
+</body>
+</html>
