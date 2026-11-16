@@ -1,0 +1,113 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "RelayReward",
+  "sourceName": "contracts/RelayReward.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "reward_",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "payable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "eventId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "AlreadyRewarded",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EmptyEvent",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "RewardUnpaid",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "eventId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "relayer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "RewardPaid",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "eventId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "relay",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "name": "relayedBy",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "reward",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x60a0601f6102b238819003918201601f19168301916001600160401b03831184841017605e578084926020946040528339810103126059575160805260405161023d90816100758239608051818181609d01526101b20152f35b600080fd5b634e487b7160e01b600052604160045260246000fdfe608080604052600436101561001357600080fd5b60003560e01c9081631dd3dd0b146101d557508063228cb7331461019a57635ab573d51461004057600080fd5b34610195576020366003190112610195576004358015610184576000818152602081905260409020546001600160a01b0316610170578060005260006020526040600020336bffffffffffffffffffffffff60a01b8254161790557f000000000000000000000000000000000000000000000000000000000000000090600080808085335af13d1561016b573d67ffffffffffffffff81116101555760405190601f8101601f19908116603f0116820167ffffffffffffffff811183821017610155576040528152600060203d92013e5b15610144576040519182527f42c8f6f0e2fa04d746b26cc4f4a8691dd37fa46aa42ef1ea594826db86d23b2360203393a3005b6345a1087960e11b60005260046000fd5b634e487b7160e01b600052604160045260246000fd5b610111565b63b9e8c56760e01b60005260045260246000fd5b63678b549160e11b60005260046000fd5b600080fd5b346101955760003660031901126101955760206040517f00000000000000000000000000000000000000000000000000000000000000008152f35b3461019557602036600319011261019557600435600090815260208181526040909120546001600160a01b0316825290f3fea264697066735822122053e432b8eb1963f02ee5e6234c63218308b8ed90d6527495c2421fe27dd4803164736f6c634300081c0033",
+  "deployedBytecode": "0x608080604052600436101561001357600080fd5b60003560e01c9081631dd3dd0b146101d557508063228cb7331461019a57635ab573d51461004057600080fd5b34610195576020366003190112610195576004358015610184576000818152602081905260409020546001600160a01b0316610170578060005260006020526040600020336bffffffffffffffffffffffff60a01b8254161790557f000000000000000000000000000000000000000000000000000000000000000090600080808085335af13d1561016b573d67ffffffffffffffff81116101555760405190601f8101601f19908116603f0116820167ffffffffffffffff811183821017610155576040528152600060203d92013e5b15610144576040519182527f42c8f6f0e2fa04d746b26cc4f4a8691dd37fa46aa42ef1ea594826db86d23b2360203393a3005b6345a1087960e11b60005260046000fd5b634e487b7160e01b600052604160045260246000fd5b610111565b63b9e8c56760e01b60005260045260246000fd5b63678b549160e11b60005260046000fd5b600080fd5b346101955760003660031901126101955760206040517f00000000000000000000000000000000000000000000000000000000000000008152f35b3461019557602036600319011261019557600435600090815260208181526040909120546001600160a01b0316825290f3fea264697066735822122053e432b8eb1963f02ee5e6234c63218308b8ed90d6527495c2421fe27dd4803164736f6c634300081c0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}
