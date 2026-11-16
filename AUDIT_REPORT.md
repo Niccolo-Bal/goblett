@@ -34,6 +34,7 @@ Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + repo
 | R2-4 | Relayer Nostr private key is committed and shipped to browsers | High | 4 | Open, key must be rotated |
 | R2-5 | `VoteLedger.record()` may be permissionless (ballot stuffing) | High? | 2, 4 | Unconfirmed |
 | R2-6 | Smaller relayer issues | Low | 7 | Open |
+| R2-7 | UI and relayer trust served JSON files over the chain | Medium | 3, 4 | Open |
 
 **R2-1.** The constructor checked `minAnonymitySet` against the raw `whitelist_.length`, but only distinct wallets can register. With a whitelist like `[alice, alice, bob]` and `minAnonymitySet = 3`, voting reverts `AnonymitySetTooSmall` forever, even at 100% turnout. Found by Scout, reproduced by Red (`test_dupWhitelist_bricksVoting`). Fix: the constructor reverts with `DuplicateWhitelistEntry`, so the raw length equals the distinct count. Test: `test_constructor_revertsOnDuplicateWhitelistEntry`. All 131 Foundry tests pass.
 
@@ -46,6 +47,8 @@ Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + repo
 **R2-5.** The deployed `VoteLedger` source isn't in the repo; the legacy one lets anyone call `record()` with an arbitrary `voter`. Needs confirmation.
 
 **R2-6.** The relayer `require`s seven modules that aren't committed, so it can't run from the repo. It also answers any origin (`CORS *`), so any site the voter visits can spend its gas, and its sign-in message has no nonce or domain, so it can be replayed.
+
+**R2-7.** `main.html` and the relayer only check that `vote-ledger.json` and `allowlist.json` have matching roots. Neither file is compared against on-chain state, so whoever serves `site/` decides which ledger and allowlist voters sign for. Separately, `scripts/networks.js` falls back to `network.json` (Arc Testnet) when `ARC_NETWORK` is unset, so the relayer targets testnet with `RELAYER_PRIVATE_KEY` by default. Fix: read the roots and addresses from the chain, and default `ARC_NETWORK` explicitly.
 
 ### Commits
 
