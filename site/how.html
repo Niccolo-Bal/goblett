@@ -32,7 +32,7 @@
     <a class="back" href="Login.html">Back to sign in</a>
     <a class="back" href="results.html">Results</a>
     <h1>How this works</h1>
-    <p>Goblett keeps the signing key in MetaMask. The ballot asks MetaMask to sign, then a relayer submits that signature on the chain.</p>
+    <p>Your wallet signs once, to register an anonymous identity. Your ballot is sent as a zero-knowledge proof that carries no wallet address or wallet signature.</p>
 
     <h2>Signing in</h2>
     <p>Connect MetaMask and sign a message that names your wallet. The page checks that the signature recovers to that same address. The key never leaves the wallet.</p>
@@ -45,10 +45,10 @@
     <p>Yes or no, choose-one, and ranked-choice answers are stored on the vote ledger. The results page reads that ledger from the chain and shows who won.</p>
 
     <h2>Sending the vote</h2>
-    <p>Submit signs the yes or no selections. The relayer checks the signature and the whitelist, then sends the transaction. You do not pay that gas from MetaMask.</p>
+    <p>Submit builds a Semaphore proof of your ballot. Any relayer can check it and send the transaction, so you do not pay that gas from MetaMask.</p>
 
     <h2>Nostr key</h2>
-    <p>Every person who opens Goblett uses this same Nostr key. The relayer signs its notes with it.</p>
+    <p>Ballots are posted to Nostr with a throwaway key made for that one vote.</p>
     <div class="card">
       <p id="goblett-nostr" class="key"></p>
     </div>
@@ -64,8 +64,7 @@
       <p id="cost-status" role="status">Enter how many yes or no options the election has.</p>
     </div>
   </main>
-  <script src="nostr-key.js"></script>
-  <script>
+    <script>
     // Replace this body when the cost formula is ready.
     // fees: { source, gasPrice, baseFee, priorityFee } with prices in wei.
     // yesNoCount: number of yes/no options in the election.
@@ -134,7 +133,6 @@
     }
 
     const nostrLine = document.getElementById('goblett-nostr');
-    if (nostrLine && window.GOBLETT_NOSTR && window.GOBLETT_NOSTR.nsec) nostrLine.textContent = window.GOBLETT_NOSTR.nsec;
 
     const button = document.getElementById('cost-button');
     const countInput = document.getElementById('option-count');
