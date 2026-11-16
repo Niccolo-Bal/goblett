@@ -10,7 +10,7 @@
 //      content is the same JSON. Voters post them with a throwaway key.
 //
 // Env: ARC_NETWORK, RPC_URL, RELAYER_PRIVATE_KEY, RELAYER_PORT,
-//      RELAYER_ALLOWED_ORIGIN, GOBLETT_ELECTIONS (comma list), NOSTR_RELAYS.
+//      RELAYER_ALLOWED_ORIGIN, GOBLETT_ELECTIONS (comma list, required), VOTE_GAS_LIMIT, NOSTR_RELAYS.
 
 const fs = require('fs');
 const http = require('http');
@@ -54,9 +54,17 @@ const ABI = {
 
 const inFlight = new Set();
 
+// Only relay to elections the operator listed. Otherwise anyone could point the
+// relayer at a contract that passes the checks but burns gas (Scout, R2-13).
+const ALLOWED_ELECTIONS = new Set((process.env.GOBLETT_ELECTIONS || '').split(',')
+  .map((s) => s.trim()).filter((s) => ethers.isAddress(s)).map((s) => ethers.getAddress(s)));
+// Hard gas cap per vote, so even a listed election cannot cost more than this.
+const VOTE_GAS_LIMIT = BigInt(process.env.VOTE_GAS_LIMIT || '2000000');
+
 function parseVote(body) {
   if (!body || typeof body !== 'object') throw new Error('Send a JSON vote.');
   if (!ethers.isAddress(body.election)) throw new Error('Include the election address.');
+  if (!ALLOWED_ELECTIONS.has(ethers.getAddress(body.election))) throw new Error('This relayer does not serve that election.');
   if (body.kind !== 'fptp' && body.kind !== 'ranked') throw new Error('kind must be "fptp" or "ranked".');
   const p = body.proof || {};
   const fields = ['merkleTreeDepth', 'merkleTreeRoot', 'nullifier', 'message', 'scope'];
@@ -82,7 +90,9 @@ async function submitVote(vote) {
     if (await election.nullifierUsed(vote.proof.nullifier)) throw new Error('This vote was already counted.');
     const args = vote.kind === 'ranked' ? [vote.proof, vote.ranking] : [vote.proof];
     await election.vote.staticCall(...args);
-    const tx = await election.vote(...args);
+    const gas = await election.vote.estimateGas(...args);
+    if (gas > VOTE_GAS_LIMIT) throw new Error('This vote costs more gas than the relayer allows.');
+    const tx = await election.vote(...args, { gasLimit: VOTE_GAS_LIMIT });
     const receipt = await tx.wait();
     console.log('Vote relayed to', vote.election, 'in', receipt.hash);
     return { transaction: receipt.hash };
