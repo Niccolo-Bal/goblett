@@ -31,7 +31,7 @@ Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + repo
 | R2-1 | Duplicate whitelist entries can brick voting | Low | 7 | Fixed `52f67ed4` |
 | R2-2 | Frontend bypasses Semaphore and publishes wallet-to-ballot on-chain | Critical | 1 | Leak fixed `bb17de88`; Semaphore voting in the UI still to do |
 | R2-3 | `RelayReward.relay()` pays for any unseen id, so it can be drained | Critical | n/a (funds) | Reproduced by Red (local: 100 random ids drained ~0.99 ETH) |
-| R2-4 | Relayer Nostr private key is committed and shipped to browsers | High | 4 | Removed from repo and site `bb17de88`; **key still in git history, must be rotated** |
+| R2-4 | Relayer Nostr private key is committed and shipped to browsers | High | 4 | Removed from repo and site `bb17de88`; key is public by design, no rotation needed |
 | R2-5 | `VoteLedger.record()` callable by anyone with a voter's signed ballot | Medium | 1 | Partly confirmed: unauthorized stuffing blocked; removed with the ledger |
 | R2-6 | Smaller relayer issues | Low | 7 | Fixed `bb17de88` (relayer runs, CORS pinned) |
 | R2-7 | UI and relayer trust served JSON files over the chain | Medium | 3, 4 | Open |
@@ -64,5 +64,7 @@ Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + repo
 - Merged `origin/main` (frontend MVP) into `Grok`.
 - `52f67ed4` Fix R2-1 (reject duplicate whitelist entries) and add a regression test.
 - `bb17de88` Rewrote `scripts/relayer.js` to accept only Semaphore proofs (`POST /vote` and Nostr notes tagged `goblett-vote:<chainId>:<election>`), check `nullifierUsed` and simulate before paying gas, cap bodies at 64 KB, pin CORS to `RELAYER_ALLOWED_ORIGIN`, and never return a key. It no longer needs the seven missing modules. Removed the wallet-signed vote submission from `site/main.html`, deleted `site/nostr-key.js`, untracked `.env`, and added `.gitignore`. Tested on local anvil: a vote is relayed, a replay is refused, and oversize bodies are cut off.
+
+- `6b340753` Fix R2-13 (Medium, Scout): `POST /vote` relayed to any address, so a fake election could pass the checks and burn the relayer's gas. The relayer now serves only `GOBLETT_ELECTIONS` and caps each vote at `VOTE_GAS_LIMIT` (default 2M). Tested: an unlisted election is refused.
 
 **Still to do for R2-2/R2-3:** in-browser registration plus Semaphore proof generation in `site/main.html`, and moving the relay reward into `Election.vote()`. The voting button is disabled until then.
