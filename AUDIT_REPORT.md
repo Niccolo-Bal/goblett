@@ -20,4 +20,19 @@ Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + repo
 ### Commits
 
 - `d910094` Added this report (R1-1 design note).
-- Round 1 results and the R1-2 Info note.
+- `a40d6b4` Round 1 results and the R1-2 Info note.
+
+## Round 2 (2026-11-16)
+
+**Status:** merged `main` (the MVP frontend in `site/`, pointed at a local chain) into `Grok`. Stress testing of the frontend setup has started; IP tracking is assumed out of reach. One Low contract bug was fixed.
+
+| # | Title | Severity | Goal | Status |
+|---|-------|----------|------|--------|
+| R2-1 | Duplicate whitelist entries can brick voting | Low | 7 | Fixed `52f67ed4` |
+
+**R2-1.** The constructor checked `minAnonymitySet` against the raw `whitelist_.length`, but only distinct wallets can register. With a whitelist like `[alice, alice, bob]` and `minAnonymitySet = 3`, voting reverts `AnonymitySetTooSmall` forever, even at 100% turnout. Found by Scout, reproduced by Red (`test_dupWhitelist_bricksVoting`). Fix: the constructor reverts with `DuplicateWhitelistEntry`, so the raw length equals the distinct count. Test: `test_constructor_revertsOnDuplicateWhitelistEntry`. All 131 Foundry tests pass.
+
+### Commits
+
+- Merged `origin/main` (frontend MVP) into `Grok`.
+- `52f67ed4` Fix R2-1 (reject duplicate whitelist entries) and add a regression test.
