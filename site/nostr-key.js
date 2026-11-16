@@ -1,1 +1,0 @@
-window.GOBLETT_NOSTR={"nsec":"nsec1zjsty7mpmdzy4fyfz6gvhe0m9uww4jvqfepn8qch4rm84ztsa8lqgkshqj","npub":"npub1luy6u4ce0k5wy2pwdmnzemq6d6tfe9npjgvq0lfu34rsjjpufrgq79n7fj","relays":["wss://relay.damus.io","wss://nos.lol","wss://relay.primal.net"]};

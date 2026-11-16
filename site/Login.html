@@ -352,7 +352,6 @@ document.addEventListener('DOMContentLoaded', async function() {
   #goblett-how:focus-visible, #goblett-results:focus-visible { outline: 3px solid #2456e8; outline-offset: 3px; }
 </style>
 <div id="goblett-wallet-slot" hidden></div>
-<script src="nostr-key.js"><\/script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"><\/script>
 <script>
 (function () {
@@ -370,7 +369,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   var nostrLine = document.createElement("p");
   nostrLine.id = "goblett-nostr";
-  if (window.GOBLETT_NOSTR && window.GOBLETT_NOSTR.nsec) nostrLine.textContent = "Nostr key " + window.GOBLETT_NOSTR.nsec;
   status.insertAdjacentElement("afterend", nostrLine);
 
   window.addEventListener("eip6963:announceProvider", function (event) {

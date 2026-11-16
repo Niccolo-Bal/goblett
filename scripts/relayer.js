@@ -1,24 +1,42 @@
+// Goblett relayer.
+//
+// Anonymous by design: it only ever handles Semaphore proofs and ballots,
+// never a wallet address or a wallet signature. Anyone can run it, because
+// Election.vote() checks the proof itself; the relayer only pays gas.
+//
+// Votes arrive two ways:
+//   1. POST /vote  { election, kind: "fptp" | "ranked", proof, ranking? }
+//   2. Nostr notes tagged ["t", "goblett-vote:<chainId>:<election>"] whose
+//      content is the same JSON. Voters post them with a throwaway key.
+//
+// Env: ARC_NETWORK, RPC_URL, RELAYER_PRIVATE_KEY, RELAYER_PORT,
+//      RELAYER_ALLOWED_ORIGIN, GOBLETT_ELECTIONS (comma list, required), VOTE_GAS_LIMIT, NOSTR_RELAYS.
+
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const { ethers } = require('ethers');
-const { votePayload } = require('./voteMessage');
-const { electionsFor, assertWhitelisted } = require('./elections');
-const { publishNostr, nostrAccount } = require('./nostr');
-const { settleVote } = require('./settle-vote');
-const { commitVote } = require('./election-call');
-const { encodeVotes } = require('./ballots');
-const { assertCast } = require('./vote-signature');
-const { loadEnv } = require('./arc-config');
 const { resolveNetwork } = require('./networks');
 
-// Public Hardhat development account #0. It is only used for the local node.
+function loadEnv() {
+  const file = path.join(__dirname, '..', '.env');
+  if (!fs.existsSync(file)) return;
+  for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2].replace(/^["']|["']$/g, '');
+  }
+}
+
+// Public Hardhat/Anvil development account #0. Only used for the local node.
 const HARDHAT_ACCOUNT_0 = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+const MAX_BODY_BYTES = 64 * 1024;
+
 loadEnv();
 const network = resolveNetwork();
 const rpcUrl = process.env.RPC_URL || network.rpcUrl;
 const privateKey = network.id === 'local' ? HARDHAT_ACCOUNT_0 : (process.env.RELAYER_PRIVATE_KEY || '');
 const port = Number(process.env.RELAYER_PORT || 8787);
+const allowedOrigin = process.env.RELAYER_ALLOWED_ORIGIN || 'http://localhost:8080';
 
 if (!privateKey) {
   console.error('Set RELAYER_PRIVATE_KEY to the account that pays gas.');
@@ -27,34 +45,93 @@ if (!privateKey) {
 
 const provider = new ethers.JsonRpcProvider(rpcUrl, network.chainId, { staticNetwork: true });
 const relayer = new ethers.Wallet(privateKey, provider);
-const abi = [
-  'function ELECTION_COUNT() view returns (uint256)',
-  'function QUESTIONS_PER_ELECTION() view returns (uint256)',
-  'function electionName(uint256 electionId) view returns (string)',
-  'function whitelisted(uint256 electionId, address voter) view returns (bool)',
-  'function hasVoted(uint256 questionId, address voter) view returns (bool)',
-  'function submitSignedVotes(address voter, uint256[] questionIds, bool[] choices, bytes signature)'
-];
+
+const PROOF = 'tuple(uint256 merkleTreeDepth, uint256 merkleTreeRoot, uint256 nullifier, uint256 message, uint256 scope, uint256[8] points)';
+const ABI = {
+  fptp: ['function vote(' + PROOF + ' proof)', 'function nullifierUsed(uint256) view returns (bool)', 'function scope() view returns (uint256)'],
+  ranked: ['function vote(' + PROOF + ' proof, uint256[] ranking)', 'function nullifierUsed(uint256) view returns (bool)', 'function scope() view returns (uint256)']
+};
+
+const inFlight = new Set();
+
+// Only relay to elections the operator listed. Otherwise anyone could point the
+// relayer at a contract that passes the checks but burns gas (Scout, R2-13).
+const ALLOWED_ELECTIONS = new Set((process.env.GOBLETT_ELECTIONS || '').split(',')
+  .map((s) => s.trim()).filter((s) => ethers.isAddress(s)).map((s) => ethers.getAddress(s)));
+// Hard gas cap per vote, so even a listed election cannot cost more than this.
+const VOTE_GAS_LIMIT = BigInt(process.env.VOTE_GAS_LIMIT || '2000000');
+
+function parseVote(body) {
+  if (!body || typeof body !== 'object') throw new Error('Send a JSON vote.');
+  if (!ethers.isAddress(body.election)) throw new Error('Include the election address.');
+  if (!ALLOWED_ELECTIONS.has(ethers.getAddress(body.election))) throw new Error('This relayer does not serve that election.');
+  if (body.kind !== 'fptp' && body.kind !== 'ranked') throw new Error('kind must be "fptp" or "ranked".');
+  const p = body.proof || {};
+  const fields = ['merkleTreeDepth', 'merkleTreeRoot', 'nullifier', 'message', 'scope'];
+  const proof = {};
+  for (const field of fields) proof[field] = BigInt(p[field]);
+  if (!Array.isArray(p.points) || p.points.length !== 8) throw new Error('proof.points must have 8 values.');
+  proof.points = p.points.map((x) => BigInt(x));
+  let ranking = null;
+  if (body.kind === 'ranked') {
+    if (!Array.isArray(body.ranking) || body.ranking.length > 32) throw new Error('Include the ranking (at most 32 entries).');
+    ranking = body.ranking.map((x) => BigInt(x));
+  }
+  return { election: ethers.getAddress(body.election), kind: body.kind, proof, ranking };
+}
+
+// Checks the vote with a free eth_call before paying gas, so junk costs us nothing.
+async function submitVote(vote) {
+  const key = vote.election + ':' + vote.proof.nullifier;
+  if (inFlight.has(key)) throw new Error('This vote is already being submitted.');
+  inFlight.add(key);
+  try {
+    const election = new ethers.Contract(vote.election, ABI[vote.kind], relayer);
+    if (await election.nullifierUsed(vote.proof.nullifier)) throw new Error('This vote was already counted.');
+    const args = vote.kind === 'ranked' ? [vote.proof, vote.ranking] : [vote.proof];
+    await election.vote.staticCall(...args);
+    const gas = await election.vote.estimateGas(...args);
+    if (gas > VOTE_GAS_LIMIT) throw new Error('This vote costs more gas than the relayer allows.');
+    const tx = await election.vote(...args, { gasLimit: VOTE_GAS_LIMIT });
+    const receipt = await tx.wait();
+    console.log('Vote relayed to', vote.election, 'in', receipt.hash);
+    return { transaction: receipt.hash };
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+function headers() {
+  return {
+    'content-type': 'application/json',
+    'access-control-allow-origin': allowedOrigin,
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'access-control-allow-headers': 'content-type',
+    vary: 'origin'
+  };
+}
 
 function send(response, status, body) {
-  const payload = JSON.stringify(body);
-  response.writeHead(status, {
-    'content-type': 'application/json',
-    'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET, POST, OPTIONS',
-    'access-control-allow-headers': 'content-type'
-  });
-  response.end(payload);
+  response.writeHead(status, headers());
+  response.end(JSON.stringify(body));
 }
 
 function readBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    request.on('data', (chunk) => chunks.push(chunk));
+    let size = 0;
+    request.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('The request body is too large.'));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
     request.on('end', () => {
-      if (!chunks.length) return resolve({});
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {});
       } catch (error) {
         reject(new Error('The request body is not valid JSON.'));
       }
@@ -63,217 +140,22 @@ function readBody(request) {
   });
 }
 
-function batch(body) {
-  const contractAddress = body.contract;
-  const voter = body.voter;
-  const questionIds = Array.isArray(body.questionIds) ? body.questionIds : null;
-  const choices = Array.isArray(body.choices) ? body.choices : null;
-  if (!ethers.isAddress(contractAddress) || !ethers.isAddress(voter) || !questionIds || !choices) {
-    throw new Error('Include the contract, voter, question ids, and choices.');
-  }
-  if (!questionIds.length || questionIds.length !== choices.length) {
-    throw new Error('The vote batch is empty or mismatched.');
-  }
-  return {
-    contractAddress: ethers.getAddress(contractAddress),
-    voter: ethers.getAddress(voter),
-    questionIds,
-    choices: choices.map((choice) => Boolean(choice))
-  };
-}
-
-async function contractAt(contractAddress) {
-  const code = await provider.getCode(contractAddress);
-  if (code === '0x') throw new Error('No voting contract is deployed at that address on Hardhat.');
-  return new ethers.Contract(contractAddress, abi, relayer);
-}
-
 const server = http.createServer(async (request, response) => {
   if (request.method === 'OPTIONS') {
-    response.writeHead(204, {
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET, POST, OPTIONS',
-      'access-control-allow-headers': 'content-type'
-    });
+    response.writeHead(204, headers());
     response.end();
     return;
   }
-
   try {
-    if (request.method === 'GET' && request.url === '/nostr') {
-      send(response, 200, await nostrAccount());
-      return;
-    }
-
     if (request.method === 'GET' && request.url === '/info') {
-      const network = await provider.getNetwork();
-      send(response, 200, {
-        chainId: network.chainId.toString(),
-        relayer: relayer.address,
-        nostr: await nostrAccount()
-      });
+      send(response, 200, { chainId: network.chainId.toString(), relayer: relayer.address });
       return;
     }
-
-    if (request.method !== 'POST') {
-      send(response, 404, { error: 'Not found.' });
+    if (request.method === 'POST' && request.url === '/vote') {
+      const vote = parseVote(await readBody(request));
+      send(response, 200, await submitVote(vote));
       return;
     }
-
-    const body = await readBody(request);
-
-    if (request.url === '/nostr-vote') {
-      const account = await nostrAccount();
-      if (!body.nsec || body.nsec !== account.nsec) {
-        send(response, 400, { error: 'The Nostr key does not match this relayer.' });
-        return;
-      }
-      const votes = Array.isArray(body.votes) ? body.votes : [];
-      const lines = ['Goblett vote'];
-      const cleaned = [];
-      votes.forEach((vote) => {
-        const name = String(vote && vote.name || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-        const choices = Array.isArray(vote && vote.choices) ? vote.choices : [];
-        const picked = choices.map((choice) => String(choice).replace(/\s+/g, ' ').trim().slice(0, 80)).filter(Boolean);
-        if (!name || !picked.length) return;
-        cleaned.push({ name, choices: picked });
-        lines.push(name + ': ' + picked.join(', '));
-      });
-      if (lines.length < 2) throw new Error('Select at least one answer.');
-      if (!ethers.isAddress(body.voter) || typeof body.signature !== 'string' || !Array.isArray(body.merkleProof)) {
-        throw new Error('Sign the vote with a wallet on the Merkle tree.');
-      }
-      const ledgerFile = path.join(__dirname, '..', 'contracts', 'vote-ledger.json');
-      const allowFile = path.join(__dirname, '..', 'site', 'allowlist.json');
-      if (!fs.existsSync(ledgerFile) || !fs.existsSync(allowFile)) {
-        throw new Error('Deploy the vote ledger before recording a vote.');
-      }
-      const deployed = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
-      const allowlist = JSON.parse(fs.readFileSync(allowFile, 'utf8'));
-      if (!deployed.merkleRoot || deployed.merkleRoot.toLowerCase() !== String(allowlist.root).toLowerCase()) {
-        throw new Error('The Merkle root does not match the vote ledger.');
-      }
-      const encoded = encodeVotes(cleaned);
-      const network = await provider.getNetwork();
-      const voter = assertCast(
-        network.chainId,
-        deployed.address,
-        deployed.merkleRoot,
-        body.voter,
-        encoded.ballotIds,
-        encoded.choiceCounts,
-        encoded.choices,
-        body.signature,
-        body.merkleProof
-      );
-      const ledger = new ethers.Contract(deployed.address, ['function hasVoted(address) view returns (bool)'], provider);
-      if (await ledger.hasVoted(voter)) throw new Error('This wallet already voted.');
-      const note = lines.join('\n');
-      const committed = await commitVote({
-        votes: cleaned,
-        voter: voter,
-        signature: body.signature,
-        merkleProof: body.merkleProof
-      });
-      let nostr = null;
-      try {
-        nostr = await publishNostr(note);
-        console.log('Nostr vote', nostr.id, 'from', nostr.npub);
-      } catch (error) {
-        send(response, 200, {
-          count: cleaned.length,
-          voter: voter,
-          recordTransaction: committed.transaction,
-          nostrError: error.message
-        });
-        return;
-      }
-      const settlement = await settleVote({
-        npub: account.npub,
-        note,
-        votes: cleaned,
-        event: nostr.event,
-        proof: body.proof || null,
-        ranking: Array.isArray(body.ranking) ? body.ranking : null,
-        election: body.election || null,
-        voter: voter,
-        signature: body.signature,
-        merkleProof: body.merkleProof
-      });
-      if (settlement.chain.kind === 'fptp' || settlement.chain.kind === 'ranked') {
-        console.log('Election vote', settlement.chain.kind, settlement.chain.transaction, 'on', settlement.chain.contract);
-      }
-      if (settlement.chain.reward) {
-        console.log('Reward', settlement.chain.reward, 'paid to', settlement.chain.relayer, 'in', settlement.chain.transaction);
-      }
-      send(response, 200, {
-        count: cleaned.length,
-        nostr: { id: nostr.id, npub: nostr.npub, relays: nostr.relays },
-        settlement
-      });
-      return;
-    }
-
-    if (request.url === '/elections') {
-      if (!ethers.isAddress(body.contract) || !ethers.isAddress(body.voter)) {
-        throw new Error('Include the contract and the wallet.');
-      }
-      const voting = await contractAt(ethers.getAddress(body.contract));
-      const voter = ethers.getAddress(body.voter);
-      const elections = await electionsFor(voting, voter);
-      send(response, 200, {
-        voter,
-        elections: elections.filter((election) => election.whitelisted)
-      });
-      return;
-    }
-
-    const vote = batch(body);
-    const voting = await contractAt(vote.contractAddress);
-    const network = await provider.getNetwork();
-    await assertWhitelisted(voting, vote.voter, vote.questionIds);
-
-    if (request.url === '/prepare') {
-      const questionIds = [];
-      const choices = [];
-      for (let i = 0; i < vote.questionIds.length; i++) {
-        if (!(await voting.hasVoted(vote.questionIds[i], vote.voter))) {
-          questionIds.push(vote.questionIds[i]);
-          choices.push(vote.choices[i]);
-        }
-      }
-      send(response, 200, { chainId: network.chainId.toString(), questionIds, choices });
-      return;
-    }
-
-    if (request.url === '/relay') {
-      const payload = votePayload(network.chainId, vote.contractAddress, vote.voter, vote.questionIds, vote.choices);
-      const recovered = ethers.verifyMessage(ethers.getBytes(payload), body.signature);
-      if (recovered.toLowerCase() !== vote.voter.toLowerCase()) {
-        send(response, 400, { error: 'The signature does not match this wallet.' });
-        return;
-      }
-      const transaction = await voting.submitSignedVotes(vote.voter, vote.questionIds, vote.choices, body.signature);
-      const receipt = await transaction.wait();
-      console.log('Relayed', vote.questionIds.length, 'votes for', vote.voter, 'in', receipt.hash);
-      const answers = vote.questionIds.map((id, index) => id + ' ' + (vote.choices[index] ? 'yes' : 'no')).join(', ');
-      const note = 'Goblett vote recorded for ' + vote.voter + '. ' + answers + '. Transaction ' + receipt.hash + '.';
-      let nostr = null;
-      try {
-        nostr = await publishNostr(note);
-        console.log('Nostr', nostr.id, 'from', nostr.npub, 'accepted by', nostr.relays.join(', '));
-      } catch (error) {
-        console.error('Nostr publish failed:', error.message);
-      }
-      send(response, 200, {
-        transaction: receipt.hash,
-        voter: vote.voter,
-        count: vote.questionIds.length,
-        nostr: nostr ? { id: nostr.id, npub: nostr.npub, relays: nostr.relays } : null
-      });
-      return;
-    }
-
     send(response, 404, { error: 'Not found.' });
   } catch (error) {
     const message = error.shortMessage || error.reason || error.message || 'The relayer could not submit the vote.';
@@ -281,10 +163,33 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
+// Optional Nostr listener. Each election is watched under its own tag.
+async function watchNostr() {
+  const elections = (process.env.GOBLETT_ELECTIONS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!elections.length) return;
+  const relays = (process.env.NOSTR_RELAYS || 'wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net').split(',');
+  const { SimplePool } = require('nostr-tools/pool');
+  const pool = new SimplePool();
+  const tags = elections.map((address) => 'goblett-vote:' + network.chainId + ':' + ethers.getAddress(address).toLowerCase());
+  pool.subscribeMany(relays, [{ kinds: [1], '#t': tags }], {
+    onevent(event) {
+      let vote;
+      try {
+        if (event.content.length > MAX_BODY_BYTES) return;
+        vote = parseVote(JSON.parse(event.content));
+        const tag = 'goblett-vote:' + network.chainId + ':' + vote.election.toLowerCase();
+        if (!event.tags.some((t) => t[0] === 't' && t[1] === tag)) return;
+      } catch (error) {
+        return; // Not a well-formed vote; ignore it.
+      }
+      submitVote(vote).catch((error) => console.log('Skipped Nostr vote', event.id, '-', error.shortMessage || error.message));
+    }
+  });
+  console.log('Watching Nostr for', tags.join(', '));
+}
+
 server.listen(port, '127.0.0.1', () => {
   console.log('Goblett relayer listening on http://127.0.0.1:' + port);
   console.log('Submitting through', rpcUrl, 'as', relayer.address);
-  publishNostr('Goblett relayer is online.')
-    .then((nostr) => console.log('Nostr', nostr.id, 'from', nostr.npub, 'accepted by', nostr.relays.join(', ')))
-    .catch((error) => console.error('Nostr publish failed:', error.message));
+  watchNostr().catch((error) => console.error('Nostr watch failed:', error.message));
 });

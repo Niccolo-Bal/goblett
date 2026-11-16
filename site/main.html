@@ -153,7 +153,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     <button id="vote-submit-button" type="button" disabled>Submit votes</button>
   </div>
 </div>
-<script src="nostr-key.js"><\/script>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"><\/script>
 <script>
 (function () {
@@ -162,7 +161,6 @@ document.addEventListener('DOMContentLoaded', async function() {
   const proof = document.getElementById('goblett-proof');
   const nostrLine = document.getElementById('goblett-nostr');
   const nostrKey = window.GOBLETT_NOSTR || null;
-  if (nostrLine && nostrKey && nostrKey.nsec) nostrLine.textContent = 'Nostr key ' + nostrKey.nsec;
   if (proof && nostrKey && nostrKey.npub) {
     proof.className = 'is-proven';
     proof.textContent = 'Using Nostr key ' + nostrKey.npub;
@@ -378,71 +376,12 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
   loadTree().catch(function () {});
 
-  button.addEventListener('click', async function () {
-    const votes = collectVotes();
-    if (!votes.length) return;
-    if (!nostrKey || !nostrKey.nsec) {
-      status.textContent = 'The Nostr key is missing. Reload the page.';
-      return;
-    }
-    let address = '';
-    try { address = sessionStorage.getItem('goblett-wallet-id') || ''; } catch (error) {}
-    if (!address || !window.ethereum || !window.ethers) {
-      lastSubmissionMessage = 'Sign in with MetaMask before voting. Each wallet can vote once.';
-      refreshButton();
-      return;
-    }
-    if (!voteLedger || !allowlist) {
-      status.textContent = 'Loading the Merkle tree. Submit again in a moment.';
-      loadTree().catch(function (error) { status.textContent = error.message || 'The Merkle tree is not deployed.'; });
-      return;
-    }
-    const membership = allowlist.proofs[address.toLowerCase()];
-    if (!membership) {
-      lastSubmissionMessage = 'This wallet is not on the Merkle tree.';
-      refreshButton();
-      return;
-    }
-    let encoded;
-    try {
-      encoded = encodeBallot(votes);
-    } catch (error) {
-      lastSubmissionMessage = error.message || 'The ballot could not be encoded.';
-      refreshButton();
-      return;
-    }
-    const hash = voteHash(voteLedger.address, voteLedger.merkleRoot, address, encoded.ballotIds, encoded.choiceCounts, encoded.choices);
-    status.textContent = 'Sign the vote in MetaMask. Each wallet can vote once.';
-    let signature;
-    try {
-      signature = await window.ethereum.request({ method: 'personal_sign', params: [hash, address] });
-    } catch (error) {
-      lastSubmissionMessage = (error && error.message) || 'The vote was not signed.';
-      refreshButton();
-      return;
-    }
-
-    button.dataset.pending = 'true';
-    button.disabled = true;
-    button.textContent = 'Sending...';
-    status.textContent = 'Publishing the signed vote...';
-    try {
-      const result = await relayer('/nostr-vote', {
-        nsec: nostrKey.nsec,
-        votes: votes,
-        voter: address,
-        signature: signature,
-        merkleProof: membership
-      });
-      const id = result.nostr && result.nostr.id ? result.nostr.id : '';
-      lastSubmissionMessage = result.count + ' vote' + (result.count === 1 ? '' : 's') + ' published with the Nostr key.' + (id ? ' ' + id : '');
-    } catch (error) {
-      lastSubmissionMessage = (error && error.message) || 'Vote submission failed.';
-    } finally {
-      delete button.dataset.pending;
-      button.textContent = 'Submit votes';
-      refreshButton();
-    }
+  // Votes must never carry the wallet or a wallet signature: the wallet signs
+  // only once, at registration. Until the Semaphore proof flow is wired in,
+  // this button refuses to send anything (audit finding R2-2).
+  button.addEventListener('click', function () {
+    lastSubmissionMessage = 'Voting is being moved to anonymous Semaphore proofs. Your wallet is no longer sent with your ballot.';
+    refreshButton();
   });
 
   refreshButton();

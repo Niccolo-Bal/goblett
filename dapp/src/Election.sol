@@ -27,6 +27,7 @@ abstract contract Election {
     error TooManyCandidates();
     error ZeroAddress();
     error InvalidMinAnonymitySet();
+    error DuplicateWhitelistEntry();
 
     error RegistrationClosed();
     error NotWhitelisted();
@@ -126,6 +127,9 @@ abstract contract Election {
         }
         for (uint256 i = 0; i < whitelist_.length; i++) {
             if (whitelist_[i] == address(0)) revert ZeroAddress();
+            // Duplicates would let minAnonymitySet exceed the number of distinct
+            // voters, making voting permanently impossible.
+            if (isWhitelisted[whitelist_[i]]) revert DuplicateWhitelistEntry();
             isWhitelisted[whitelist_[i]] = true;
         }
 
