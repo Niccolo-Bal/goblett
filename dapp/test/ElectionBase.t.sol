@@ -178,6 +178,15 @@ abstract contract ElectionTestBase is Test {
         _deploy(_candidates(3), w, regEnd, votingStart, votingEnd, 2);
     }
 
+    function test_constructor_revertsOnDuplicateWhitelistEntry() public {
+        // A duplicate would let minAnonymitySet exceed the distinct voter count
+        // and brick voting forever (round 2 finding R2-1).
+        address[] memory w = _whitelist();
+        w[2] = w[0];
+        vm.expectRevert(Election.DuplicateWhitelistEntry.selector);
+        _deploy(_candidates(3), w, regEnd, votingStart, votingEnd, 2);
+    }
+
     function test_constructor_scopeIsUniquePerElection() public {
         Election other = _deploy(_candidates(3), _whitelist(), regEnd, votingStart, votingEnd, 2);
         assertTrue(other.scope() != election.scope());
