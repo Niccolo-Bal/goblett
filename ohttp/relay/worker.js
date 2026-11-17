@@ -11,6 +11,10 @@
 // Settings (Worker variables):
 //   GATEWAY_URL      where to forward, e.g. https://gateway.example/   (never client-chosen)
 //   ALLOWED_ORIGINS  comma-separated site origins allowed to call it from a browser
+//   RELAY_TOKEN      (Secret) shared with the gateway, so only this relay can reach it and
+//                    the rate limit below can't be skipped by calling the gateway directly
+//   LIMITER          (rate-limit binding, optional) requests per client address per minute.
+//                    Counted in memory by Cloudflare, not logged.
 
 const MAX_BYTES = 64 * 1024
 
@@ -39,13 +43,17 @@ export default {
     if (request.method !== "POST" || request.headers.get("Content-Type") !== "message/ohttp-req") {
       return reply(400, "not an OHTTP request")
     }
+    if (env.LIMITER) {
+      const { success } = await env.LIMITER.limit({ key: request.headers.get("CF-Connecting-IP") ?? "unknown" })
+      if (!success) return reply(429, "too many requests")
+    }
     const body = await request.arrayBuffer()
     if (body.byteLength > MAX_BYTES) return reply(413, "too large")
 
     // A brand-new request: nothing of the client's is forwarded except the encrypted body.
     const upstream = await fetch(env.GATEWAY_URL, {
       method: "POST",
-      headers: { "Content-Type": "message/ohttp-req" },
+      headers: { "Content-Type": "message/ohttp-req", ...(env.RELAY_TOKEN ? { "X-Relay-Token": env.RELAY_TOKEN } : {}) },
       body,
     })
     return new Response(upstream.body, {

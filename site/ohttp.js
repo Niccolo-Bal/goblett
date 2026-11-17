@@ -32,15 +32,22 @@ export function createOhttpClient({ relayUrl, keyConfig }, fetchImpl = (...a) =>
 }
 
 let loaded
-/// The site's OHTTP channel, or null when the deployment has none configured (local dev).
-/// A network failure throws rather than returning null: callers must not quietly fall back
-/// to a direct connection, which would expose the address this exists to hide.
+// Only the Vite dev server may run without a private channel. A built site always ships
+// /ohttp.json, so failing to load it (404, 5xx, an HTML error page) must not downgrade
+// the voter to a direct connection (R4-1).
+const DEV = Boolean(import.meta.env?.DEV)
+
+/// The site's OHTTP channel, or null only on the local dev server with no config.
+/// Any failure throws and is not cached, so a later call retries: callers must not
+/// quietly fall back to a direct connection, which would expose the address this hides.
 export function ohttp() {
   if (typeof location === "undefined") return Promise.resolve(null) // not a browser (tests)
   return (loaded ??= fetch("/ohttp.json", { cache: "no-store" }).then(async (r) => {
-    if (!r.ok || !r.headers.get("Content-Type")?.includes("json")) return null // no such file
-    const cfg = await r.json()
-    return cfg?.relayUrl && cfg?.keyConfig ? createOhttpClient(cfg) : null
+    const isJson = r.ok && r.headers.get("Content-Type")?.includes("json")
+    const cfg = isJson ? await r.json() : null
+    if (cfg?.relayUrl && cfg?.keyConfig) return createOhttpClient(cfg)
+    if (DEV) return null // local dev without a gateway
+    throw new Error(`private channel config unavailable (/ohttp.json: HTTP ${r.status})`)
   })).catch((e) => {
     loaded = undefined
     throw e

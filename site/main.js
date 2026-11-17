@@ -169,6 +169,7 @@ async function init() {
     return
   }
   document.body.classList.add("has-election")
+  prefetchProofArtifacts()
   await refresh()
   setInterval(refresh, REFRESH_MS)
 }
@@ -183,6 +184,24 @@ async function refresh() {
     $("title").textContent =
       code === null ? `Chain RPC not reachable at ${cfg.rpcUrl}` : code === "0x" ? `No election contract at ${cfg.election}. Redeploy, then reload.` : `Error: ${errMsg(e)}`
   }
+}
+
+// Reads that name the connected wallet go over the private channel, once per wallet,
+// not on every refresh over the direct RPC (R4-2). Cleared after registering.
+let walletCache // { account, whitelisted, registered } or a pending Promise of it
+function walletStatus(acc) {
+  if (walletCache?.account === acc) return walletCache.status
+  const status = privateElection()
+    .then(async (priv) => {
+      const [whitelisted, registered] = await Promise.all([priv.isWhitelisted(acc), priv.hasRegistered(acc)])
+      return { whitelisted, registered, walletErr: undefined }
+    })
+    .catch((e) => {
+      walletCache = undefined // retry next refresh
+      return { whitelisted: undefined, registered: undefined, walletErr: errMsg(e) }
+    })
+  walletCache = { account: acc, status }
+  return status
 }
 
 async function _refresh() {
@@ -204,9 +223,7 @@ async function _refresh() {
   // Fixed at deployment, so read once.
   const terms = state?.terms ?? { bounty: await election.relayBounty(), creator: await election.creator() }
   state = { title, cands, phase, regEnd, vStart, vEnd, minAnon, regCount, total, tally, funds, terms }
-  if (account) {
-    ;[state.whitelisted, state.registered] = await Promise.all([election.isWhitelisted(account), election.hasRegistered(account)])
-  }
+  if (account) Object.assign(state, await walletStatus(account))
   const t = (s) => new Date(Number(s) * 1000).toLocaleString()
 
   $("title").textContent = title
@@ -245,10 +262,10 @@ async function connect() {
   log(`using wallet: ${mm ? mm.info.name : "window.ethereum"}${wallets.length > 1 ? ` (found ${wallets.map((w) => w.info.name).join(", ")})` : ""}`)
   const [acc] = await eth.request({ method: "eth_requestAccounts" })
   account = ethers.getAddress(acc)
-  loadAccount()
+  resetAccount()
   eth.on?.("accountsChanged", (accs) => {
     account = accs[0] ? ethers.getAddress(accs[0]) : undefined
-    loadAccount()
+    resetAccount()
     refresh()
   })
   await refresh()
@@ -300,6 +317,7 @@ function renderRegister() {
   btn.disabled = true
   if (!account) return setStatus("regStatus", "Connect MetaMask to register.", "hint")
   if (state.phase !== "registration") return setStatus("regStatus", `Registration is closed (phase: ${state.phase}).`, "hint")
+  if (state.walletErr) return setStatus("regStatus", `Could not check this wallet over the private channel: ${state.walletErr}`, "err")
   if (!state.whitelisted) return setStatus("regStatus", `${account} is not on this election's whitelist.`, "err")
   if (state.registered) {
     const local = loadIdentities().some((x) => x.label === account.toLowerCase())
@@ -386,6 +404,7 @@ async function register() {
     const priv = await privateElection()
     const res = await confirm(cfg, sent.id, () => priv.hasRegistered(wallet))
     log(`registered on-chain${res.txHash ? `, tx ${res.txHash}` : ""}`)
+    walletCache = undefined
     await refresh()
   } catch (e) {
     console.error(e)
@@ -476,6 +495,17 @@ function updateVoteButton() {
 // Same encoding as RankedChoiceElection.packRanking: byte i = ranking[i] + 1.
 const pack = (r) => r.reduce((acc, c, i) => acc | (BigInt(c + 1) << BigInt(8 * i)), 0n)
 
+// Proofs always use one self-hosted circuit (R4-7). Left to itself, generateProof
+// downloads the depth-N circuit from snark-artifacts.pse.dev right before publishing,
+// so that third party would see "this IP is voting now". Depth 20 fits 1M voters;
+// shorter Merkle proofs are padded and verify on-chain the same way.
+const PROOF_DEPTH = 20
+const PROOF_ARTIFACTS = { wasm: "/snark/semaphore-20.wasm", zkey: "/snark/semaphore-20.zkey" }
+// Fetch them with the page rather than at vote time, so the request's timing says nothing.
+function prefetchProofArtifacts() {
+  for (const url of Object.values(PROOF_ARTIFACTS)) fetch(url, { cache: "force-cache" }).catch(() => {})
+}
+
 async function vote() {
   $("voteBtn").disabled = true
   try {
@@ -496,8 +526,9 @@ async function vote() {
     // another election's scope and get a proof that counts there (R3-4).
     const scope = BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["uint256", "address"], [cfg.chainId, cfg.election])))
     if (scope !== (await priv.scope())) throw new Error("This contract's scope does not match its address. It is not a genuine goblett election.")
-    setStatus("voteStatus", `Generating zero-knowledge proof (${group.size} registered)… first time downloads the circuit, ~10-30 s`, "muted")
-    const proof = await generateProof(identity, group, message, scope)
+    setStatus("voteStatus", `Generating zero-knowledge proof (${group.size} registered)… ~10-30 s`, "muted")
+    if (group.depth > PROOF_DEPTH) throw new Error(`groups deeper than ${PROOF_DEPTH} are not supported`)
+    const proof = await generateProof(identity, group, message, scope, PROOF_DEPTH, PROOF_ARTIFACTS)
 
     setStatus("voteStatus", "Publishing proof to Nostr…", "muted")
     const body = { proof: { ...proof, points: proof.points.map(String) } }
@@ -528,6 +559,14 @@ let username // of the connected wallet, if it has one
 function renderAccount() {
   $("account").textContent = !account ? "not connected" : username ? `${username} (${account.slice(0, 6)}…${account.slice(-4)})` : account
   $("accountCard").hidden = !account
+}
+
+// The username lookup sends the wallet address to goblett's server over a direct
+// connection, tying it to this IP, so it only runs when the voter asks (R4-3).
+function resetAccount() {
+  username = undefined
+  renderAccount()
+  if (account) setStatus("accountStatus", "Looking up your username sends this wallet's address to goblett's server.", "muted")
 }
 
 async function loadAccount() {
@@ -770,6 +809,7 @@ $("voteBtn").onclick = vote
 $("refresh").onclick = refresh
 $("createBtn").onclick = createElection
 $("usernameBtn").onclick = saveUsername
+$("lookupBtn").onclick = loadAccount
 $("newWhitelist").addEventListener("input", previewWhitelist)
 $("reclaimBtn").onclick = reclaim
 $("identitySel").onchange = () => {

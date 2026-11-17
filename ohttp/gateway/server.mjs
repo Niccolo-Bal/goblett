@@ -23,8 +23,13 @@ const handle = createGateway(process.env)
 const port = Number(process.env.PORT ?? 8788)
 
 createServer(async (req, res) => {
+  // Same cap as the relay, so the Node gateway can't be made to buffer an unbounded body.
   const chunks = []
-  for await (const c of req) chunks.push(c)
+  let size = 0
+  for await (const c of req) {
+    if ((size += c.length) > 64 * 1024) return res.writeHead(413).end("too large")
+    chunks.push(c)
+  }
   const request = new Request(`http://${req.headers.host ?? "localhost"}${req.url}`, {
     method: req.method,
     headers: req.headers,
