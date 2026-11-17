@@ -46,8 +46,8 @@ During the registration phase of a Goblett election, users sign a nullifier and 
 it through an [OHTTP](https://en.wikipedia.org/wiki/Oblivious_HTTP) to the Nostr topic tagged `goblett-<chain id>` (5042 for Arc),
 where it is then test-proved by a relayer before being forwarded to the election. After the registration ends, the same is then done
 for the vote, this time proved with Semaphore. A nullifier is necessary, as not being able to tell where the vote came paired with the
-nondeterministic Semaphore proofs means without it voters could send infinitely many votes. At the end of the voting phase, anyone
-can then see who got the most votes and a consensus is made.
+nondeterministic Semaphore proofs means without it voters could send infinitely many votes otherwise. At the end of the voting phase, 
+anyone can then see who got the most votes and a consensus is made.
 
 Arc is used because its lack of fluctuation in both its native token ($USDC) and its gas fees mean that every election costs the same
 every time, and election contracts can't be underfunded. Semaphore was not yet on Arc, so we needed to deploy our own copies. The
@@ -106,6 +106,11 @@ that if you can tie a voter to a vote (or to a specific time), you can tie them 
 systems get around this by having a trusted party decrypt the votes and then publishing results with an sk-SNARK proof, 
 but this solution and other similar ones require trust. However, tieing a voter to a vote is already a breach of security,
 so for an airtight system, this doesn't arise as an issue.   
+
+### Gap Between Vote + Registration
+
+It is kind of annoying to have a seperate registration and voting phases, especially when the window from election creation 
+to closure is tight.
 
 ### OHTTP Not Truly Oblivious
 

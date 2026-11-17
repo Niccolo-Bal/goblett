@@ -315,9 +315,12 @@ function renderRegister() {
 
 async function register() {
   $("registerBtn").disabled = true
-  let step = "switch network"
+  let step = "check wallet network"
   try {
-    await ensureChain()
+    // The wallet may stay on whatever network it is on (Ethereum, an L2, ...): an address
+    // is the same on every EVM chain, and the election accepts a signature made elsewhere.
+    const walletChain = Number(BigInt(await eth.request({ method: "eth_chainId" })))
+    const onElectionChain = walletChain === Number(cfg.chainId)
     step = "check account permission"
     await ensureAccountAuthorized()
     step = "prepare identity"
@@ -328,9 +331,26 @@ async function register() {
       identity = new Identity()
       saveIdentity(account, identity)
     }
-    const domain = { name: "goblett Election", version: "1", chainId: cfg.chainId, verifyingContract: cfg.election }
-    const types = { Register: [{ name: "wallet", type: "address" }, { name: "identityCommitment", type: "uint256" }] }
-    const value = { wallet: account, identityCommitment: identity.commitment }
+    // Wallets only sign typed data whose domain names their active network. On the
+    // election's chain that is the plain Register message. On any other network it is
+    // RegisterOn: the domain names the wallet's network, and the election's chain and
+    // address are part of the message instead (Election.registerForSignedOn).
+    const domain = onElectionChain
+      ? { name: "goblett Election", version: "1", chainId: cfg.chainId, verifyingContract: cfg.election }
+      : { name: "goblett Election", version: "1", chainId: walletChain }
+    const types = onElectionChain
+      ? { Register: [{ name: "wallet", type: "address" }, { name: "identityCommitment", type: "uint256" }] }
+      : {
+          RegisterOn: [
+            { name: "wallet", type: "address" },
+            { name: "identityCommitment", type: "uint256" },
+            { name: "electionChainId", type: "uint256" },
+            { name: "election", type: "address" },
+          ],
+        }
+    const value = onElectionChain
+      ? { wallet: account, identityCommitment: identity.commitment }
+      : { wallet: account, identityCommitment: identity.commitment, electionChainId: cfg.chainId, election: cfg.election }
     // Ask MetaMask directly (not via ethers' signer) so its own error message reaches the page.
     const payload = ethers.TypedDataEncoder.getPayload(domain, types, value)
     setStatus("regStatus", "Sign the registration in MetaMask…", "muted")
@@ -352,7 +372,13 @@ async function register() {
     if (ethers.verifyTypedData(domain, types, value, signature) !== account) throw new Error("signature does not match the connected wallet")
     step = "publish to Nostr"
     setStatus("regStatus", "Publishing to Nostr…", "muted")
-    const sent = await publish(cfg, { type: "register", wallet: account, identityCommitment: identity.commitment.toString(), signature })
+    const sent = await publish(cfg, {
+      type: "register",
+      wallet: account,
+      identityCommitment: identity.commitment.toString(),
+      signature,
+      ...(onElectionChain ? {} : { signingChainId: walletChain }),
+    })
     log(`registration published${sent.private ? " through the private channel" : ""} to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
     step = "wait for a relayer to put it on-chain"
     setStatus("regStatus", "Waiting for a relayer to put it on-chain…", "muted")

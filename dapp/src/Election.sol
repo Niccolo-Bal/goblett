@@ -71,6 +71,16 @@ abstract contract Election {
     ///         No nonce: the domain binds the signature to this election, and each
     ///         wallet can register only once.
     bytes32 public constant REGISTER_TYPEHASH = keccak256("Register(address wallet,uint256 identityCommitment)");
+    /// @notice EIP-712 type for a registration signed while the wallet is on ANOTHER
+    ///         network (Ethereum, an L2, ...). Wallets refuse typed data whose domain
+    ///         chainId is not their active network, so that domain names the network the
+    ///         wallet is on, and the election's own chain and address move into the
+    ///         message. Same guarantees as Register: valid for this election only.
+    bytes32 public constant REGISTER_ON_TYPEHASH =
+        keccak256("RegisterOn(address wallet,uint256 identityCommitment,uint256 electionChainId,address election)");
+    /// @dev Domain of RegisterOn: no verifyingContract, because the election does not
+    ///      live on the chain the wallet is signing on.
+    bytes32 private constant _SIGNING_DOMAIN_TYPEHASH = keccak256("EIP712Domain(string name,string version,uint256 chainId)");
     bytes32 private constant _DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 private constant _NAME_HASH = keccak256("goblett Election");
@@ -230,6 +240,27 @@ abstract contract Election {
         _creditRelayer(gasStart, MAX_REGISTER_REFUND_GAS);
     }
 
+    /// @notice Like registerFor, for a wallet that signed while on another network.
+    ///         An address is the same on every EVM chain, so a whitelisted wallet does
+    ///         not need Arc added to it (or any funds anywhere) to register: it signs
+    ///         RegisterOn on whatever network it is on, and anyone relays it here.
+    /// @param signingChainId The chain id the wallet was on when it signed (the
+    ///        chainId of the signature's EIP-712 domain). It only selects which digest
+    ///        to check; a wrong value just makes the signature invalid.
+    function registerForSignedOn(
+        address wallet,
+        uint256 identityCommitment,
+        uint256 signingChainId,
+        bytes calldata signature
+    ) external {
+        uint256 gasStart = gasleft();
+        if (!_isValidSignature(wallet, registerDigestOn(wallet, identityCommitment, signingChainId), signature)) {
+            revert InvalidSignature();
+        }
+        _register(wallet, identityCommitment);
+        _creditRelayer(gasStart, MAX_REGISTER_REFUND_GAS);
+    }
+
     function _register(address wallet, uint256 identityCommitment) internal {
         if (block.timestamp >= registrationEnd) revert RegistrationClosed();
         if (!isWhitelisted[wallet]) revert NotWhitelisted();
@@ -254,6 +285,21 @@ abstract contract Election {
     function registerDigest(address wallet, uint256 identityCommitment) public view returns (bytes32) {
         bytes32 structHash = keccak256(abi.encode(REGISTER_TYPEHASH, wallet, identityCommitment));
         return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
+    }
+
+    /// @notice The digest `wallet` signs, on the network `signingChainId`, to authorize
+    ///         registerForSignedOn. It commits to this election's chain and address, so
+    ///         it is worthless for any other election, including a contract at the same
+    ///         address on a different chain.
+    function registerDigestOn(address wallet, uint256 identityCommitment, uint256 signingChainId)
+        public
+        view
+        returns (bytes32)
+    {
+        bytes32 domain = keccak256(abi.encode(_SIGNING_DOMAIN_TYPEHASH, _NAME_HASH, _VERSION_HASH, signingChainId));
+        bytes32 structHash =
+            keccak256(abi.encode(REGISTER_ON_TYPEHASH, wallet, identityCommitment, block.chainid, address(this)));
+        return keccak256(abi.encodePacked("\x19\x01", domain, structHash));
     }
 
     /// @dev ECDSA for EOAs (low-s only, so each signature has one valid encoding),

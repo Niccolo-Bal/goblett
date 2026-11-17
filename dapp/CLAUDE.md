@@ -82,7 +82,13 @@ constructor arguments for both).
    calls `register(C)`, or signs EIP-712 `Register(address wallet,uint256
    identityCommitment)` (domain: name "goblett Election", version "1", chainId,
    election address) and anyone relays it via `registerFor(wallet, C, sig)`.
-   EOA (low-s ECDSA) and ERC-1271 wallets are supported. `C` becomes a leaf of
+   EOA (low-s ECDSA) and ERC-1271 wallets are supported.
+   A wallet need not be on Arc to sign: on any other network it signs
+   `RegisterOn(address wallet,uint256 identityCommitment,uint256 electionChainId,address election)`
+   (domain: name, version and the chainId the wallet is on; no verifyingContract) and
+   the relayer calls `registerForSignedOn(wallet, C, signingChainId, sig)`. The election's
+   chain and address are inside the message, so the signature is valid for this election
+   only, including against a contract at the same address on another chain. `C` becomes a leaf of
    the election's Semaphore Merkle tree. It is also appended to
    `commitments()` (the full list in tree order, so a voter can rebuild the group with
    one call; Arc's RPC only serves logs for small block ranges).

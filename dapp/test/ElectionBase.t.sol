@@ -793,6 +793,136 @@ abstract contract ElectionTestBase is Test {
         assertEq(election.owed(dave), election.totalOwed());
     }
 
+    // =====================================================================
+    // Registration signed on another network (registerForSignedOn)
+    // =====================================================================
+
+    uint256 internal constant ETHEREUM = 1;
+
+    function _signOn(Election e, uint256 key, address wallet, uint256 commitment, uint256 signingChainId)
+        internal
+        view
+        returns (bytes memory)
+    {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, e.registerDigestOn(wallet, commitment, signingChainId));
+        return abi.encodePacked(r, s, v);
+    }
+
+    function test_signedOn_walletOnEthereumRegistersViaRelayer() public {
+        bytes memory sig = _signOn(election, _key("alice"), alice, 42, ETHEREUM);
+
+        vm.expectEmit(true, false, false, true, address(election));
+        emit Election.Registered(alice, 42);
+        vm.prank(dave); // relayer
+        election.registerForSignedOn(alice, 42, ETHEREUM, sig);
+
+        assertTrue(election.hasRegistered(alice));
+        assertTrue(mock.isMember(election.groupId(), 42));
+    }
+
+    /// Standard EIP-712, so a wallet on Ethereum (eth_signTypedData_v4) produces it.
+    function test_signedOn_digestIsEip712() public view {
+        bytes32 domain = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId)"),
+                keccak256("goblett Election"),
+                keccak256("1"),
+                ETHEREUM
+            )
+        );
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256("RegisterOn(address wallet,uint256 identityCommitment,uint256 electionChainId,address election)"),
+                alice,
+                42,
+                block.chainid,
+                address(election)
+            )
+        );
+        assertEq(election.registerDigestOn(alice, 42, ETHEREUM), keccak256(abi.encodePacked("\x19\x01", domain, structHash)));
+    }
+
+    function test_signedOn_anySigningNetworkWorks() public {
+        // Signed on Base (8453), and on the election's own chain: both are fine.
+        vm.prank(dave);
+        election.registerForSignedOn(alice, 42, 8453, _signOn(election, _key("alice"), alice, 42, 8453));
+        vm.prank(dave);
+        election.registerForSignedOn(bob, 43, block.chainid, _signOn(election, _key("bob"), bob, 43, block.chainid));
+        assertEq(election.registeredCount(), 2);
+    }
+
+    function test_signedOn_revertsOnWrongSigner() public {
+        bytes memory sig = _signOn(election, _key("bob"), alice, 42, ETHEREUM);
+        vm.expectRevert(Election.InvalidSignature.selector);
+        election.registerForSignedOn(alice, 42, ETHEREUM, sig);
+    }
+
+    function test_signedOn_revertsIfRelayerChangesCommitment() public {
+        bytes memory sig = _signOn(election, _key("alice"), alice, 42, ETHEREUM);
+        vm.expectRevert(Election.InvalidSignature.selector);
+        election.registerForSignedOn(alice, 43, ETHEREUM, sig);
+    }
+
+    function test_signedOn_revertsIfRelayerClaimsAnotherSigningNetwork() public {
+        bytes memory sig = _signOn(election, _key("alice"), alice, 42, ETHEREUM);
+        vm.expectRevert(Election.InvalidSignature.selector);
+        election.registerForSignedOn(alice, 42, 8453, sig);
+    }
+
+    function test_signedOn_revertsOnSignatureForOtherElection() public {
+        Election other = _deploy(_candidates(3), _whitelist(), regEnd, votingStart, votingEnd, 2);
+        bytes memory sig = _signOn(other, _key("alice"), alice, 42, ETHEREUM);
+        vm.expectRevert(Election.InvalidSignature.selector);
+        election.registerForSignedOn(alice, 42, ETHEREUM, sig);
+    }
+
+    /// The same election address can exist on two chains (e.g. mainnet and testnet, same
+    /// deployer and nonce). A signature for one must not register on the other.
+    function test_signedOn_revertsOnSameAddressOnAnotherChain() public {
+        bytes memory sig = _signOn(election, _key("alice"), alice, 42, ETHEREUM);
+        vm.chainId(block.chainid + 1); // "the other chain", same contract address
+        vm.expectRevert(Election.InvalidSignature.selector);
+        election.registerForSignedOn(alice, 42, ETHEREUM, sig);
+    }
+
+    /// The two signature kinds are not interchangeable.
+    function test_signedOn_andRegisterForSignaturesAreDistinct() public {
+        bytes memory onChainSig = _sign(election, _key("alice"), alice, 42);
+        vm.expectRevert(Election.InvalidSignature.selector);
+        election.registerForSignedOn(alice, 42, block.chainid, onChainSig);
+
+        bytes memory offChainSig = _signOn(election, _key("alice"), alice, 42, block.chainid);
+        vm.expectRevert(Election.InvalidSignature.selector);
+        election.registerFor(alice, 42, offChainSig);
+    }
+
+    function test_signedOn_sameRulesAsRegister() public {
+        bytes memory sig = _signOn(election, _key("alice"), alice, 42, ETHEREUM);
+        election.registerForSignedOn(alice, 42, ETHEREUM, sig);
+        vm.expectRevert(Election.AlreadyRegistered.selector);
+        election.registerForSignedOn(alice, 42, ETHEREUM, sig); // replay
+
+        (address eve, uint256 eveKey) = makeAddrAndKey("eve"); // not whitelisted
+        bytes memory eveSig = _signOn(election, eveKey, eve, 7, ETHEREUM);
+        vm.expectRevert(Election.NotWhitelisted.selector);
+        election.registerForSignedOn(eve, 7, ETHEREUM, eveSig);
+
+        vm.warp(regEnd);
+        bytes memory late = _signOn(election, _key("bob"), bob, 43, ETHEREUM);
+        vm.expectRevert(Election.RegistrationClosed.selector);
+        election.registerForSignedOn(bob, 43, ETHEREUM, late);
+    }
+
+    function test_signedOn_creditsTheRelayer() public {
+        _fund(1 ether);
+        bytes memory sig = _signOn(election, _key("alice"), alice, 42, ETHEREUM);
+        vm.txGasPrice(GAS_PRICE);
+        vm.prank(dave);
+        election.registerForSignedOn(alice, 42, ETHEREUM, sig);
+        assertGt(election.owed(dave), BOUNTY);
+        assertLe(election.owed(dave), BOUNTY + election.MAX_REGISTER_REFUND_GAS() * GAS_PRICE);
+    }
+
     /// The test contract is the creator and receives reclaimed funds.
     receive() external payable {}
 
