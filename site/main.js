@@ -359,7 +359,7 @@ function renderIdentities() {
   const prev = sel.value
   const ids = loadIdentities()
   sel.innerHTML = ids.length
-    ? ids.map((x) => `<option value="${x.label}">${x.label.startsWith("0x") ? "registered by " + x.label.slice(0, 10) + "…" : x.label}</option>`).join("")
+    ? ids.map((x) => `<option value="${esc(x.label)}">${esc(x.label.startsWith("0x") ? "registered by " + x.label.slice(0, 10) + "…" : x.label)}</option>`).join("")
     : `<option value="">(no identity in this browser)</option>`
   if (ids.some((x) => x.label === prev)) sel.value = prev
 }
