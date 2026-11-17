@@ -76,7 +76,11 @@ def main():
     min_anon = a.min_anon or min(2, len(whitelist))
     # The pending block's time, not the latest block's: on an idle local chain the
     # latest block can be many minutes old, which would put the schedule in the past.
-    now = max(w3.eth.get_block("pending").timestamp, w3.eth.get_block("latest").timestamp)
+    now = w3.eth.get_block("latest").timestamp
+    try:
+        now = max(now, w3.eth.get_block("pending").timestamp)
+    except Exception:
+        pass  # some RPCs (Arc) don't serve the pending block; latest is close enough there
     reg_end = now + int(a.reg * 60)
     vote_start = reg_end + int(a.gap * 60)
     vote_end = vote_start + int(a.vote * 60)

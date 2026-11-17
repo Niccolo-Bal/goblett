@@ -6,3 +6,6 @@ relayer.log
 # private keys
 .env
 relayer.env
+.env.*
+!.env.example
+election.*.json

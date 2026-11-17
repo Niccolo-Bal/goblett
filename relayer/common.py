@@ -12,8 +12,15 @@ from web3.exceptions import ContractCustomError, ContractLogicError
 
 HERE = Path(__file__).resolve().parent
 DAPP = HERE.parent / "dapp"
-CONFIG_PATH = HERE / "election.json"
-SITE_CONFIG_PATH = HERE.parent / "site" / "public" / "election.json"
+# Which deployment this process works on. Unset = the main network (election.json, .env).
+# GOBLETT_NETWORK=testnet uses election.testnet.json and .env.testnet instead, so a
+# second relayer can serve the site's /testnet page alongside the main one.
+NETWORK = os.environ.get("GOBLETT_NETWORK", "").strip().lower()
+if NETWORK and not NETWORK.isalnum():
+    raise SystemExit("GOBLETT_NETWORK must be a simple name such as 'testnet'")
+_SUFFIX = f".{NETWORK}" if NETWORK else ""
+CONFIG_PATH = HERE / f"election{_SUFFIX}.json"
+SITE_CONFIG_PATH = HERE.parent / "site" / "public" / f"election{_SUFFIX}.json"
 
 
 
@@ -21,7 +28,8 @@ def _load_dotenv():
     """Read KEY=VALUE lines from relayer/.env (gitignored) into the environment.
     Real environment variables win. Keeps private keys out of the repo and the shell history."""
     # relayer.env is the old name; both are gitignored now (R3-1: it was committed with a live key).
-    for path in (HERE / ".env", HERE / "relayer.env"):
+    # A named network reads ONLY its own file, never the main network's keys or RPC.
+    for path in ((HERE / f".env{_SUFFIX}",) if NETWORK else (HERE / ".env", HERE / "relayer.env")):
         if not path.exists():
             continue
         for line in path.read_text().splitlines():
@@ -71,7 +79,7 @@ def account(w3: Web3, name: str):
         if w3.eth.chain_id != LOCAL_CHAIN_ID and os.environ.get("ALLOW_DEV_KEYS") != "1":
             raise SystemExit(
                 f"{name} is not set. On chain {w3.eth.chain_id} you must use your own funded key: put\n"
-                f"  {name}=0x...\nin relayer/.env (gitignored). The built-in anvil keys are public.\n"
+                f"  {name}=0x...\nin relayer/.env{_SUFFIX} (gitignored). The built-in anvil keys are public.\n"
                 f"(For a local fork of a real chain, set ALLOW_DEV_KEYS=1.)"
             )
         key = _ANVIL_KEYS[name]

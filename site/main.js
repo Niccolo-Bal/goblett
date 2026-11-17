@@ -93,13 +93,22 @@ const votedKey = (commitment) => `goblett:voted:${cfg.election.toLowerCase()}:${
 // ---------------------------------------------------------------------------
 // Chain reads
 // ---------------------------------------------------------------------------
+// "testnet" when the page is opened under /testnet, else null (the main network).
+const NETWORK = location.pathname.split("/")[1] === "testnet" ? "testnet" : null
+
 async function init() {
   try {
     // Public chain config (RPC, Semaphore address, Nostr relays), written by relayer/setup_chain.py.
-    cfg = await (await fetch("/election.json", { cache: "no-store" })).json()
+    // The first path segment picks the network: / is the main one, /testnet reads
+    // election.testnet.json. Same page and code either way.
+    cfg = await (await fetch(`/election${NETWORK ? "." + NETWORK : ""}.json`, { cache: "no-store" })).json()
   } catch {
-    $("title").textContent = "Chain not set up (run relayer/setup_chain.py, then reload)"
+    $("title").textContent = `Chain not set up${NETWORK ? ` for /${NETWORK}` : ""} (run relayer/setup_chain.py, then reload)`
     return
+  }
+  if (NETWORK) {
+    $("network").textContent = cfg.chainName ?? NETWORK
+    $("network").hidden = false
   }
   const net = ethers.Network.from(cfg.chainId)
   provider = new ethers.JsonRpcProvider(cfg.rpcUrl, net, { staticNetwork: net, cacheTimeout: -1 })
@@ -465,7 +474,8 @@ const toLocalInput = (unix) => {
 }
 const fromLocalInput = (v) => Math.floor(new Date(v).getTime() / 1000)
 // The time the next block will carry (an idle local chain's latest block can be old).
-const chainNow = async () => Math.max(...(await Promise.all([provider.getBlock("pending"), provider.getBlock("latest")])).map((b) => b?.timestamp ?? 0))
+// Some RPCs (Arc) refuse to serve the pending block; the latest block is then close enough.
+const chainNow = async () => Math.max(...(await Promise.all([provider.getBlock("pending").catch(() => null), provider.getBlock("latest")])).map((b) => b?.timestamp ?? 0))
 
 async function initCreateForm() {
   const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]")

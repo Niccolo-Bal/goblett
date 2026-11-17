@@ -98,6 +98,26 @@ this repo's build. `relayer/election.json` and `site/public/election.json` point
 - Real money: the relayer key holds real USDC in a plain file; keep its balance small and
   withdraw (`withdraw.py`) regularly.
 
+## Testnet alongside mainnet (`/testnet`)
+
+The same site build serves both networks: `/` reads `election.json` (mainnet) and
+`/testnet` reads `election.testnet.json` (Arc testnet), showing a network badge.
+`site/public/_redirects` makes the host serve the page under `/testnet`. Browser storage
+and the Nostr topic both include the chain ID, so the two never mix.
+
+The testnet side needs its own relayer process. Scripts run with `GOBLETT_NETWORK=testnet`
+use `relayer/election.testnet.json` and read keys and RPC only from `relayer/.env.testnet`
+(never from `.env`):
+
+```bash
+# relayer/.env.testnet: RPC_URL=https://rpc.testnet.arc.io, RELAYER_KEY=0x... (testnet funds)
+set GOBLETT_NETWORK=testnet
+.venv\Scripts\python relayer.py
+```
+
+`GOBLETT_NETWORK=testnet` works the same way for `setup_chain.py`, `deploy_election.py`
+and `withdraw.py`.
+
 ## Deploying on Arc testnet
 
 Arc testnet: chain 5042002, RPC `https://rpc.testnet.arc.io`, gas paid in USDC (18
