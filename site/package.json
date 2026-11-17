@@ -12,7 +12,9 @@
     "@semaphore-protocol/identity": "4.14.5",
     "@semaphore-protocol/proof": "4.14.5",
     "ethers": "6.17.0",
-    "nostr-tools": "2.26.1"
+    "hpke": "1.1.8",
+    "nostr-tools": "2.26.1",
+    "ohttp-ts": "0.6.2"
   },
   "devDependencies": {
     "vite": "6.3.5"

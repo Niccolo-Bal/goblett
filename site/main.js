@@ -15,6 +15,7 @@ import { Group } from "@semaphore-protocol/group"
 import { generateProof } from "@semaphore-protocol/proof"
 
 import { publish, confirm } from "./nostr.js"
+import { ohttp } from "./ohttp.js"
 import { usernamesOf, addressesOf, claimUsername, USERNAME_RE, USERNAME_RULES } from "./accounts.js"
 // ABI + creation bytecode of both election types, exported by relayer/setup_chain.py.
 import CONTRACTS from "./contracts.json"
@@ -71,6 +72,34 @@ const setStatus = (id, msg, cls = "") => {
 }
 
 let cfg, provider, election, account, state
+
+// Chain reads that would give a voter away (is MY registration in? is MY nullifier used?)
+// go through the OHTTP channel when the deployment has one, so the RPC operator sees the
+// gateway's address instead of the voter's. Everything else uses the RPC directly.
+class OhttpRpcProvider extends ethers.JsonRpcApiProvider {
+  #channel
+  #chainId
+  constructor(channel, chainId) {
+    const net = ethers.Network.from(chainId)
+    super(net, { staticNetwork: net, cacheTimeout: -1 })
+    this.#channel = channel
+    this.#chainId = chainId
+  }
+  async _send(payload) {
+    const res = await this.#channel(`/rpc/${this.#chainId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+    const out = await res.json()
+    if (!res.ok) throw new Error(`private chain read failed: ${out.error ?? `HTTP ${res.status}`}`)
+    return Array.isArray(out) ? out : [out]
+  }
+}
+
+let privateReads // Promise of the election contract to use for voter-specific reads
+function privateElection() {
+  return (privateReads ??= ohttp().then((channel) => (channel ? election.connect(new OhttpRpcProvider(channel, cfg.chainId)) : election))).catch((e) => {
+    privateReads = undefined
+    throw new Error(`the private channel is unavailable (${errMsg(e)}). Not continuing over a direct connection.`)
+  })
+}
 const REFRESH_MS = 10000 // each refresh is a dozen RPC calls; public RPCs rate-limit
 let ranking = [] // ranked elections: candidate indices in preference order
 
@@ -324,11 +353,12 @@ async function register() {
     step = "publish to Nostr"
     setStatus("regStatus", "Publishing to Nostr…", "muted")
     const sent = await publish(cfg, { type: "register", wallet: account, identityCommitment: identity.commitment.toString(), signature })
-    log(`registration published to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
+    log(`registration published${sent.private ? " through the private channel" : ""} to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
     step = "wait for a relayer to put it on-chain"
     setStatus("regStatus", "Waiting for a relayer to put it on-chain…", "muted")
     const wallet = account
-    const res = await confirm(cfg, sent.id, () => election.hasRegistered(wallet))
+    const priv = await privateElection()
+    const res = await confirm(cfg, sent.id, () => priv.hasRegistered(wallet))
     log(`registered on-chain${res.txHash ? `, tx ${res.txHash}` : ""}`)
     await refresh()
   } catch (e) {
@@ -430,7 +460,8 @@ async function vote() {
     voteResultShown = true
     setStatus("voteStatus", "Rebuilding the voter group from on-chain registrations…", "muted")
     // One call for the whole list (no event scan: Arc's RPC only serves small log ranges).
-    const group = new Group([...(await election.commitments())])
+    const priv = await privateElection()
+    const group = new Group([...(await priv.commitments())])
     if (group.indexOf(identity.commitment) < 0) throw new Error("this identity is not registered in this election")
 
     const ballot = selectedBallot()
@@ -438,7 +469,7 @@ async function vote() {
     // Bind the proof to this address: a look-alike contract could otherwise return
     // another election's scope and get a proof that counts there (R3-4).
     const scope = BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["uint256", "address"], [cfg.chainId, cfg.election])))
-    if (scope !== (await election.scope())) throw new Error("This contract's scope does not match its address. It is not a genuine goblett election.")
+    if (scope !== (await priv.scope())) throw new Error("This contract's scope does not match its address. It is not a genuine goblett election.")
     setStatus("voteStatus", `Generating zero-knowledge proof (${group.size} registered)… first time downloads the circuit, ~10-30 s`, "muted")
     const proof = await generateProof(identity, group, message, scope)
 
@@ -446,10 +477,10 @@ async function vote() {
     const body = { proof: { ...proof, points: proof.points.map(String) } }
     if (cfg.kind === "ranked") body.ranking = ballot
     const sent = await publish(cfg, { type: "vote", ...body })
-    log(`vote published to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
+    log(`vote published${sent.private ? " through the private channel" : ""} to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
     setStatus("voteStatus", "Waiting for a relayer to put it on-chain…", "muted")
     // Don't trust anyone's word: confirm() waits until the nullifier is used on-chain.
-    const res = await confirm(cfg, sent.id, () => election.nullifierUsed(proof.nullifier))
+    const res = await confirm(cfg, sent.id, () => priv.nullifierUsed(proof.nullifier))
 
     localStorage.setItem(votedKey(identity.commitment), "1")
     setStatus("voteStatus", `✓ Vote counted. Nullifier ${short(proof.nullifier)} is marked used on-chain.`, "ok")

@@ -3,13 +3,18 @@
 // Each message is a Nostr event tagged with the chain's topic and published to public
 // relays. It names its election; any relayer subscribed to the topic can forward it.
 // Every event is signed with a fresh throwaway key, so events can't be linked to
-// each other or to a person by their Nostr pubkey. (The Nostr relays still see the
-// sender's IP and timing.)
+// each other or to a person by their Nostr pubkey.
+//
+// When the deployment has an OHTTP channel (ohttp.js), the event is handed to the OHTTP
+// gateway, which publishes it: the Nostr relays then see the gateway's address, not the
+// voter's. Without one (local dev) the browser connects to the Nostr relays itself, and
+// they see its IP and timing.
 //
 // Must match relayer/nostr.py.
 
 import { generateSecretKey, finalizeEvent } from "nostr-tools/pure"
 import { SimplePool } from "nostr-tools/pool"
+import { ohttp } from "./ohttp.js"
 
 export const KIND_REQUEST = 9467 // voter -> relayers
 export const KIND_REPLY = 9468 // relayer -> voter
@@ -29,6 +34,18 @@ export async function publish(cfg, body) {
     },
     generateSecretKey()
   )
+  // Private channel if there is one. If it is configured but fails, this throws: we never
+  // quietly fall back to a direct connection, which would expose the sender's address.
+  const channel = await ohttp()
+  if (channel) {
+    const res = await withTimeout(channel("/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(event) }), 20000, "publish")
+    const out = await res.json().catch(() => ({}))
+    if (!res.ok || !out.accepted?.length) {
+      throw new Error("the private channel could not publish the message: " + (out.error ?? JSON.stringify(out.rejected ?? {}) ?? `HTTP ${res.status}`))
+    }
+    return { id: event.id, accepted: out.accepted, private: true }
+  }
+
   const results = await Promise.allSettled(pool.publish(cfg.nostrRelays, event).map((p) => withTimeout(p, 8000, "publish")))
   const accepted = cfg.nostrRelays.filter((_, i) => results[i].status === "fulfilled")
   if (!accepted.length) {
