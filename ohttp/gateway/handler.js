@@ -1,0 +1,171 @@
+// goblett OHTTP gateway (RFC 9458). Decrypts requests that arrive through the OHTTP relay
+// and carries them out, so the Nostr relays and the chain RPC see this gateway's address
+// instead of the voter's.
+//
+// The gateway sees WHAT is sent (a signed Nostr event, a chain read) but not WHO sent it:
+// it only ever talks to the relay. The relay sees who, but only ciphertext. Neither can
+// change a registration or a vote: those are authorized by the wallet's signature and the
+// Semaphore proof inside the event.
+//
+// It is not an open proxy. The decrypted request must be one of:
+//
+//   POST /publish        body: a signed goblett Nostr event (kind 9467, topic goblett-<chainId>)
+//                        -> forwarded to the configured Nostr relays
+//   POST /rpc/<chainId>  body: JSON-RPC (single or small batch), read-only methods only
+//                        -> forwarded to that chain's RPC
+//
+// Plain (unencrypted) endpoint:  GET /ohttp-keys  -> the public key configuration.
+//
+// Runs unchanged as a Cloudflare Worker (worker.js) or under Node (server.mjs).
+//
+// Settings (env):
+//   OHTTP_SEED     64 hex chars; the private key is derived from it. SECRET. (keygen.mjs)
+//   NOSTR_RELAYS   comma-separated wss:// URLs
+//   RPC_URLS       JSON object: chain id -> RPC URL, e.g. {"5042":"https://rpc.mainnet.arc.io"}
+
+import { AEAD_AES_128_GCM, CipherSuite, KDF_HKDF_SHA256, KEM_DHKEM_P256_HKDF_SHA256 } from "hpke"
+import { KeyConfig, OHTTPServer } from "ohttp-ts"
+
+// P-256 because every browser's WebCrypto has it (X25519 is still missing from older ones).
+export const SUITE = new CipherSuite(KEM_DHKEM_P256_HKDF_SHA256, KDF_HKDF_SHA256, AEAD_AES_128_GCM)
+export const KEY_ID = 1
+
+const KIND_REQUEST = 9467 // must match site/nostr.js and the relayer's nostr.py
+const MAX_EVENT_BYTES = 24 * 1024
+const MAX_RPC_BYTES = 16 * 1024
+const MAX_RPC_BATCH = 20
+const PUBLISH_TIMEOUT_MS = 6000
+// Reads the site needs to confirm a registration or vote and to build a proof. Nothing
+// that sends a transaction or scans logs.
+const RPC_METHODS = new Set(["eth_call", "eth_chainId", "eth_blockNumber", "eth_getBlockByNumber", "eth_getCode"])
+
+const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
+const hexToBytes = (hex) => Uint8Array.from(hex.match(/../g).map((b) => parseInt(b, 16)))
+
+export async function keyConfigFromSeed(seedHex) {
+  if (!/^[0-9a-fA-F]{64}$/.test(seedHex ?? "")) throw new Error("OHTTP_SEED must be 64 hex characters (run keygen.mjs)")
+  return KeyConfig.derive(SUITE, hexToBytes(seedHex), KEY_ID)
+}
+
+/// Send one event to one Nostr relay and wait for its verdict (NIP-01 "OK" message).
+function publishTo(url, event, WebSocketImpl) {
+  return new Promise((resolve, reject) => {
+    let ws
+    const done = (fn, v) => {
+      clearTimeout(timer)
+      try {
+        ws?.close()
+      } catch {}
+      fn(v)
+    }
+    const timer = setTimeout(() => done(reject, new Error("timed out")), PUBLISH_TIMEOUT_MS)
+    try {
+      ws = new WebSocketImpl(url)
+    } catch (e) {
+      return done(reject, e)
+    }
+    ws.addEventListener("open", () => ws.send(JSON.stringify(["EVENT", event])))
+    ws.addEventListener("message", (m) => {
+      try {
+        const msg = JSON.parse(typeof m.data === "string" ? m.data : "")
+        if (msg[0] === "OK" && msg[1] === event.id) msg[2] ? done(resolve, url) : done(reject, new Error(String(msg[3] ?? "rejected")))
+      } catch {}
+    })
+    ws.addEventListener("error", () => done(reject, new Error("connection failed")))
+    ws.addEventListener("close", () => done(reject, new Error("closed before answering")))
+  })
+}
+
+export function createGateway(env, { fetchImpl = fetch, WebSocketImpl = globalThis.WebSocket } = {}) {
+  const relays = (env.NOSTR_RELAYS ?? "").split(",").map((s) => s.trim()).filter(Boolean)
+  const rpcUrls = JSON.parse(env.RPC_URLS || "{}")
+  const topics = new Set(Object.keys(rpcUrls).map((id) => `goblett-${id}`))
+  let ready // key config + server, created once
+
+  const setup = () =>
+    (ready ??= keyConfigFromSeed(env.OHTTP_SEED).then((keyConfig) => ({
+      server: new OHTTPServer([keyConfig]),
+      keys: KeyConfig.serializeMultiple([keyConfig]),
+    })))
+
+  async function publish(request) {
+    const text = await request.text()
+    if (text.length > MAX_EVENT_BYTES) return json(413, { error: "event too large" })
+    let ev
+    try {
+      ev = JSON.parse(text)
+    } catch {
+      return json(400, { error: "body must be a JSON Nostr event" })
+    }
+    const wellFormed =
+      ev && typeof ev === "object" && /^[0-9a-f]{64}$/.test(ev.id) && /^[0-9a-f]{64}$/.test(ev.pubkey) && /^[0-9a-f]{128}$/.test(ev.sig) &&
+      typeof ev.content === "string" && Array.isArray(ev.tags) && Number.isInteger(ev.created_at)
+    if (!wellFormed) return json(400, { error: "not a signed Nostr event" })
+    // Only goblett requests for the chains we serve: this is not a general Nostr publisher.
+    const onTopic = ev.tags.some((t) => Array.isArray(t) && t[0] === "t" && topics.has(t[1]))
+    if (ev.kind !== KIND_REQUEST || !onTopic) return json(403, { error: "only goblett registration/vote events are forwarded" })
+
+    const results = await Promise.allSettled(relays.map((url) => publishTo(url, ev, WebSocketImpl)))
+    const accepted = relays.filter((_, i) => results[i].status === "fulfilled")
+    const rejected = Object.fromEntries(relays.map((url, i) => [url, results[i].reason?.message]).filter(([, why]) => why))
+    return json(accepted.length ? 200 : 502, { accepted, rejected })
+  }
+
+  async function rpc(request, chainId) {
+    const url = rpcUrls[chainId]
+    if (!url) return json(404, { error: `chain ${chainId} is not served by this gateway` })
+    const text = await request.text()
+    if (text.length > MAX_RPC_BYTES) return json(413, { error: "request too large" })
+    let body
+    try {
+      body = JSON.parse(text)
+    } catch {
+      return json(400, { error: "body must be JSON-RPC" })
+    }
+    const calls = Array.isArray(body) ? body : [body]
+    if (!calls.length || calls.length > MAX_RPC_BATCH) return json(400, { error: `1 to ${MAX_RPC_BATCH} calls per request` })
+    const bad = calls.find((c) => !c || typeof c !== "object" || !RPC_METHODS.has(c.method))
+    if (bad) return json(403, { error: `method not allowed: ${String(bad?.method)}` })
+    const upstream = await fetchImpl(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: text })
+    return new Response(await upstream.text(), { status: upstream.status, headers: { "Content-Type": "application/json" } })
+  }
+
+  async function route(inner) {
+    const path = new URL(inner.url).pathname
+    if (inner.method !== "POST") return json(405, { error: "POST only" })
+    if (path === "/publish") return publish(inner)
+    const m = /^\/rpc\/(\d+)$/.exec(path)
+    if (m) return rpc(inner, m[1])
+    return json(404, { error: "unknown gateway route" })
+  }
+
+  return async function handle(request) {
+    const path = new URL(request.url).pathname
+    let state
+    try {
+      state = await setup()
+    } catch (e) {
+      return json(500, { error: e.message })
+    }
+    if (request.method === "GET" && path === "/ohttp-keys") {
+      return new Response(state.keys, { headers: { "Content-Type": "application/ohttp-keys", "Cache-Control": "public, max-age=300" } })
+    }
+    if (request.method !== "POST" || request.headers.get("Content-Type") !== "message/ohttp-req") {
+      return json(400, { error: "expected an OHTTP request (POST, Content-Type: message/ohttp-req)" })
+    }
+    let inner, context
+    try {
+      ;({ request: inner, context } = await state.server.decapsulateRequest(request))
+    } catch {
+      // Wrong or rotated key, or garbage. Nothing can be said back in encrypted form.
+      return json(400, { error: "could not decrypt the request (stale key configuration?)" })
+    }
+    let response
+    try {
+      response = await route(inner)
+    } catch (e) {
+      response = json(502, { error: `gateway error: ${e.message}` })
+    }
+    return context.encapsulateResponse(response)
+  }
+}

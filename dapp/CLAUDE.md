@@ -176,8 +176,11 @@ Instant runoff (`RankedChoiceElection`):
   still register the old `C` first. Signing only one `C` per wallet avoids it.
 - **Whitelist stored by a constructor loop** means large lists are expensive to
   deploy. Later option: a Merkle root of the whitelist.
-- **Network metadata** (IP, timing) when submitting to a relayer. Voters should
-  use Tor/VPN.
+- **Network metadata.** Registrations, votes and the voter-specific chain reads go
+  through an OHTTP relay + gateway (`../ohttp/`), so the Nostr relays and the RPC see the
+  gateway, not the voter. Both currently run on Cloudflare under our account, so this
+  does not hide voters from Cloudflare or from us, and the gateway can see the sender's
+  city and network. Timing is not hidden either. Voters who need more should use Tor/VPN.
 - **Arc's validator set is permissioned.** Validators could censor or delay votes
   but not alter them (the vote is bound to the proof).
 
