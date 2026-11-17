@@ -22,6 +22,9 @@
 //   OHTTP_SEED     64 hex chars; the private key is derived from it. SECRET. (keygen.mjs)
 //   NOSTR_RELAYS   comma-separated wss:// URLs
 //   RPC_URLS       JSON object: chain id -> RPC URL, e.g. {"5042":"https://rpc.mainnet.arc.io"}
+//   RELAY_TOKEN    SECRET shared with the relay. When set, encrypted requests must carry it
+//                  (X-Relay-Token), so the gateway can't be used without going through the
+//                  relay and its per-address rate limit (R4-5).
 
 import { AEAD_AES_128_GCM, CipherSuite, KDF_HKDF_SHA256, KEM_DHKEM_P256_HKDF_SHA256 } from "hpke"
 import { KeyConfig, OHTTPServer } from "ohttp-ts"
@@ -152,6 +155,9 @@ export function createGateway(env, { fetchImpl = fetch, WebSocketImpl = globalTh
     }
     if (request.method !== "POST" || request.headers.get("Content-Type") !== "message/ohttp-req") {
       return json(400, { error: "expected an OHTTP request (POST, Content-Type: message/ohttp-req)" })
+    }
+    if (env.RELAY_TOKEN && request.headers.get("X-Relay-Token") !== env.RELAY_TOKEN) {
+      return json(403, { error: "requests must come through the OHTTP relay" })
     }
     let inner, context
     try {

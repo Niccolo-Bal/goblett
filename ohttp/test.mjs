@@ -127,5 +127,30 @@ await createOhttpClient({ relayUrl: "https://relay.test/", keyConfig }, spyFetch
 check(!captured.includes("TOP-SECRET-BALLOT") && !captured.includes("publish"), "what the relay carries is ciphertext (neither the content nor the route is visible)")
 check(captured.length >= 1024, `and it is padded (${captured.length} bytes for a small event)`)
 
+// R4-5: with RELAY_TOKEN the gateway only answers the relay, and the relay rate-limits by address.
+{
+  const tokenGateway = createGateway({ ...gatewayEnv, RELAY_TOKEN: "t0ken" }, { fetchImpl: rpcFetch, WebSocketImpl: FakeWebSocket })
+  const counts = new Map()
+  const LIMITER = { limit: async ({ key }) => ({ success: (counts.set(key, (counts.get(key) ?? 0) + 1), counts.get(key) <= 3) }) }
+  const env = { ...relayEnv, RELAY_TOKEN: "t0ken", LIMITER }
+  const saved = globalThis.fetch
+  globalThis.fetch = async (input, init) => tokenGateway(new Request(input, init))
+  const via = (ip) => (url, init) => relay.fetch(new Request(url, { ...init, credentials: undefined, referrerPolicy: undefined, headers: { ...init.headers, Origin: "https://goblett.xyz", "CF-Connecting-IP": ip } }), env)
+  const rpcBody = { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId" }) }
+  const res = await createOhttpClient({ relayUrl: "https://relay.test/", keyConfig }, via("198.51.100.1"))("/rpc/5042002", rpcBody)
+  check(res.status === 200, "through the relay, the token is added and the gateway answers")
+  const direct = createOhttpClient({ relayUrl: "https://gateway.test/", keyConfig }, (url, init) => tokenGateway(new Request(url, init)))
+  let refused = false
+  try { await direct("/rpc/5042002", rpcBody) } catch (e) { refused = /through the OHTTP relay/.test(e.message) }
+  check(refused, "calling the gateway directly without the token is refused")
+  const c = createOhttpClient({ relayUrl: "https://relay.test/", keyConfig }, via("198.51.100.1"))
+  let limited = false
+  for (let i = 0; i < 3 && !limited; i++) try { await c("/rpc/5042002", rpcBody) } catch (e) { limited = /HTTP 429/.test(e.message) }
+  check(limited, "the relay answers 429 once an address is over its limit")
+  const other = await createOhttpClient({ relayUrl: "https://relay.test/", keyConfig }, via("198.51.100.2"))("/rpc/5042002", rpcBody)
+  check(other.status === 200, "while other addresses are unaffected")
+  globalThis.fetch = saved
+}
+
 console.log(failures ? `${failures} FAILURE(S)` : "ALL PASSED")
 process.exit(failures ? 1 : 0)

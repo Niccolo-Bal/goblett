@@ -50,9 +50,9 @@ node keygen.mjs        # prints OHTTP_SEED (secret, for the gateway) and the pub
    ```json
    { "relayUrl": "https://relay.goblett.xyz/", "keyConfig": "<the public keyConfig>" }
    ```
-   Without that file the site publishes to the Nostr relays directly, as before. With it,
-   registrations, votes and the voter-specific chain reads go through the relay, and if
-   the channel fails the site stops rather than fall back to a direct connection.
+   A built site requires that file: if it is missing or broken the site stops instead of
+   talking to the Nostr relays directly (only the Vite dev server runs without it). With
+   it, registrations, votes and the voter-specific chain reads go through the relay.
 
 `node test.mjs` checks the encryption round trip and the relay's and gateway's rules.
 
@@ -70,9 +70,14 @@ node keygen.mjs        # prints OHTTP_SEED (secret, for the gateway) and the pub
 - **Timing.** The relay sees that an address sent something; the vote appears on-chain
   seconds later. With few voters that correlation is strong. Not mitigated yet (a random
   delay or batching at the gateway would help).
-- **Other requests.** The page itself, the proof's circuit files and the ordinary
+- **Other requests.** The page itself, the proof's circuit files (fetched at page load) and the ordinary
   election reads still come from the voter's own address. They don't say which vote is
   theirs, but they show that this address was using the site at that time.
 - **Key rotation.** One key, derived from `OHTTP_SEED`. Changing it means updating
   `ohttp.json` and redeploying the site; old pages fail until reloaded.
-- **Abuse.** No rate limiting yet. Only the relay can limit by address.
+- **Abuse.** The relay limits each address (the `LIMITER` binding, 60 requests a minute)
+  and adds a shared secret (`RELAY_TOKEN`, set on both Workers) that the gateway requires,
+  so nobody can skip the limit by calling the gateway directly. Until both secrets are
+  set, anyone can use the gateway as a free read-only Arc RPC and a goblett-event publisher,
+  and a flood could get its address rate-limited by the RPC or the Nostr relays, which
+  stops every voter, since the site no longer falls back to a direct connection.
