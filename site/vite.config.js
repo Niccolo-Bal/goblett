@@ -33,4 +33,12 @@ function pagesFunctionsDev(env) {
 
 export default defineConfig(({ mode }) => ({
   plugins: [pagesFunctionsDev(loadEnv(mode, process.cwd(), ""))],
+  build: {
+    rollupOptions: {
+      input: {
+        main: "index.html",
+        home: "home.html",
+      },
+    },
+  },
 }))
