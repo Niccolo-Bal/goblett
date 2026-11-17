@@ -33,6 +33,7 @@ Env (or relayer/.env): RPC_URL, RELAYER_KEY, REQUIRE_REIMBURSEMENT.
 """
 
 import asyncio
+import collections
 import json
 import os
 import threading
@@ -57,6 +58,13 @@ REQUIRE_REIMBURSEMENT = os.environ.get("REQUIRE_REIMBURSEMENT", "0" if w3.eth.ch
 tx_lock = threading.Lock()  # one tx at a time, so nonces never collide
 cfg = None
 elections = {}  # address -> (contract, kind), for addresses that passed lookup_election
+rejected = {}  # address -> unix time until which it is known not to be an election (R3-5)
+REJECT_TTL = 600
+# R3-5: requests are queued per election and served round-robin, so one election (even a
+# genuine, funded one) can't starve the others. Elections listed in PRIORITY_ELECTIONS
+# (comma list; the configured default election is always included) get more turns.
+PRIORITY_WEIGHT = int(os.environ.get("PRIORITY_WEIGHT", "4"))
+MAX_PENDING_PER_ELECTION = int(os.environ.get("MAX_PENDING_PER_ELECTION", "200"))
 
 
 def _masked_runtime(code: bytes, art: dict) -> bytes:
@@ -84,6 +92,8 @@ def lookup_election(addr) -> tuple:
         raise BadRequest("need election (address)")
     if addr in elections:
         return elections[addr]
+    if rejected.get(addr, 0) > time.time():  # R3-5: don't pay an RPC call per junk event
+        raise BadRequest("not a goblett election contract")
     code = bytes(w3.eth.get_code(addr))
     for kind, (art, template) in TEMPLATES.items():
         if len(code) == len(template) and _masked_runtime(code, art) == template:
@@ -93,6 +103,7 @@ def lookup_election(addr) -> tuple:
             elections[addr] = (contract, kind)
             print(f"  serving election {addr} ({kind}): {contract.functions.title().call()!r}")
             return elections[addr]
+    rejected[addr] = time.time() + REJECT_TTL
     raise BadRequest("not a goblett election contract")
 
 
@@ -219,19 +230,55 @@ async def serve(config: dict):
     genesis = w3.eth.get_block(0).timestamp
     flt = {"kinds": [nostr.KIND_REQUEST], "#t": [topic], "since": max(genesis, int(time.time()) - 24 * 3600)}
     tasks = [asyncio.create_task(pool.subscribe(url, flt, queue)) for url in cfg["nostrRelays"]]
-    try:
+    priority = {a.strip().lower() for a in os.environ.get("PRIORITY_ELECTIONS", "").split(",") if a.strip()}
+    if cfg.get("election"):
+        priority.add(str(cfg["election"]).lower())
+    buckets = {}  # election (lowercase str) -> deque of events, in arrival order
+    ready = asyncio.Event()
+
+    def bucket_key(event) -> str:
+        try:
+            body = json.loads(event["content"]) if len(event["content"]) <= MAX_CONTENT else None
+            return str(body.get("election", "")).lower() if isinstance(body, dict) else ""
+        except (ValueError, TypeError):
+            return ""
+
+    async def intake():
         while True:
             event = await queue.get()
             if event["id"] in seen or not nostr.verify(event):
                 continue
             seen.add(event["id"])
-            try:
-                result = await asyncio.to_thread(process, event)
-            except Exception as e:  # never let one bad message stop the relayer
-                print(f"  error on {event['id'][:12]}: {e!r}")
-                result = {"ok": False, "error": "internal relayer error"}
-            reply = nostr.make_event(key, nostr.KIND_REPLY, [["t", topic], ["e", event["id"]]], json.dumps(result))
-            await pool.publish(reply)
+            q = buckets.setdefault(bucket_key(event), collections.deque())
+            if len(q) >= MAX_PENDING_PER_ELECTION:
+                q.popleft()  # drop the oldest; that election is flooding
+            q.append(event)
+            ready.set()
+
+    async def handle(event):
+        try:
+            result = await asyncio.to_thread(process, event)
+        except Exception as e:  # never let one bad message stop the relayer
+            print(f"  error on {event['id'][:12]}: {e!r}")
+            result = {"ok": False, "error": "internal relayer error"}
+        reply = nostr.make_event(key, nostr.KIND_REPLY, [["t", topic], ["e", event["id"]]], json.dumps(result))
+        await pool.publish(reply)
+
+    tasks.append(asyncio.create_task(intake()))
+    try:
+        while True:
+            await ready.wait()
+            ready.clear()
+            while any(buckets.values()):
+                # One round: priority elections first, each election gets its turns.
+                for k in sorted(list(buckets), key=lambda k: k not in priority):
+                    q = buckets.get(k)
+                    for _ in range(PRIORITY_WEIGHT if k in priority else 1):
+                        if not q:
+                            break
+                        await handle(q.popleft())
+                    if not q:
+                        buckets.pop(k, None)
     finally:
         for t in tasks:
             t.cancel()
