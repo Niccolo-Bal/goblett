@@ -1,7 +1,7 @@
 
-<center>
+<div align="center">
 <img src="media/goblett_logo.png" alt="logo" width="150px">
-</center>
+</div>
 
 <header>
   <h1 style="border-bottom: none;">Goblett: Seamless Private Voting</h1>
