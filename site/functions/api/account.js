@@ -84,20 +84,26 @@ async function claim(request, env) {
   }
   if (signer !== wallet) return json(403, { error: "the signature is not from that wallet" })
 
-  // Only a newer signature than the stored one may change the row (stops replays of an older one).
-  const cur = await db(env, `accounts?select=signed_at&address=eq.${wallet}`)
-  if (!cur.ok) return dbError(cur)
-  const [existing] = await cur.json()
-  if (existing && issuedAt <= Number(existing.signed_at)) return json(409, { error: "a newer signature was already used; sign again" })
-
-  const row = { address: wallet, username, signed_at: issuedAt, updated_at: new Date().toISOString() }
-  const r = await db(env, "accounts?on_conflict=address", {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify(row),
-  })
-  if (r.status === 409) return json(409, { error: `"${username}" is already taken` })
-  if (!r.ok) return dbError(r)
+  // Only a newer signature than the stored one may change the row (stops replays of an
+  // older one). The check is part of each write, not a read before it, so two requests
+  // racing can't let the older signature land last (R4-4).
+  const row = { username, signed_at: issuedAt, updated_at: new Date().toISOString() }
+  const rep = { "Content-Type": "application/json", Prefer: "return=representation" }
+  const upd = await db(env, `accounts?address=eq.${wallet}&signed_at=lt.${issuedAt}`, { method: "PATCH", headers: rep, body: JSON.stringify(row) })
+  if (upd.status === 409) return json(409, { error: `"${username}" is already taken` })
+  if (!upd.ok) return dbError(upd)
+  if (!(await upd.json()).length) {
+    // No row newer-than-stored to update: either the wallet has no row yet, or it has a
+    // row signed at or after issuedAt. A plain insert (no merge) decides atomically.
+    const ins = await db(env, "accounts", { method: "POST", headers: rep, body: JSON.stringify({ address: wallet, ...row }) })
+    if (ins.status === 409) {
+      const cur = await db(env, `accounts?select=address&address=eq.${wallet}`)
+      if (!cur.ok) return dbError(cur)
+      if ((await cur.json()).length) return json(409, { error: "a newer signature was already used; sign again" })
+      return json(409, { error: `"${username}" is already taken` })
+    }
+    if (!ins.ok) return dbError(ins)
+  }
   return json(200, { address: wallet, username })
 }
 

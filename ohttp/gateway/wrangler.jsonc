@@ -1,5 +1,6 @@
 // OHTTP gateway as a Cloudflare Worker. Deploy from this folder: `npx wrangler deploy`,
-// then set the key once: `npx wrangler secret put OHTTP_SEED` (from `node ../keygen.mjs`).
+// then set the key once: `npx wrangler secret put OHTTP_SEED` (from `node ../keygen.mjs`),
+// and the relay's shared secret: `npx wrangler secret put RELAY_TOKEN` (same value as the relay's).
 //
 // Running the gateway on Cloudflare means the relay and the gateway share a host, so
 // Cloudflare could in principle match senders to messages. For a real split, run the
