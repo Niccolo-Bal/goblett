@@ -12,10 +12,11 @@ Niccolo's "round 3". IDs start at R4 so they don't clash with the table below. I
 |---|-------|----------|--------|
 | R4-1 | `ohttp()` returns null on a 404, 5xx or HTML `/ohttp.json` (including the SPA fallback) and caches it, so publishing and private reads silently go direct over the real IP (Scout, Red PoC) | High | Fixed `653990b8` |
 | R4-2 | Every 10 s refresh sends `isWhitelisted(wallet)` and `hasRegistered(wallet)` to the RPC over the direct connection, tying the wallet to the IP (Scout, Red PoC) | Medium | Fixed `976fd8f0` |
-| R4-3 | Same-origin direct requests still leak: the `/api/account` lookup of the connected wallet, election reads in refresh (IP watches election E), and `generateProof` fetching snark artifacts from `snark-artifacts.pse.dev` right before a vote | Medium | Open |
+| R4-3 | Same-origin direct requests still leak: the `/api/account` lookup of the connected wallet, election reads in refresh (IP watches election E), | Medium | Open |
 | R4-4 | `/api/account`: a concurrent race lets an older `signed_at` win, a freed username can be squatted at once (risky if whitelists use names), and GET enumerates 100 per call with no rate limit. Live table missing (502) (Red) | Low | Open |
 | R4-5 | The gateway is an open read proxy: any client can do `eth_call` and `eth_getCode` on any contract via `/rpc/5042002` (method allowlist exists) (Red) | Low | Open, needs gateway code |
 | R4-6 | If one party runs both the relay and the gateway (both behind Cloudflare under goblett.xyz), they see IP and plaintext together and OHTTP hides nothing from them. Timing still links a vote to the request that sent it | Design | Waiting on Niccolo: who runs each? |
+| R4-7 | `generateProof` downloads the depth-N circuit from `snark-artifacts.pse.dev` over a direct connection right before a vote, so that third party sees which IP is voting and when (Scout, Red) | High | Fixed `746c90ce` |
 
 R3-5 and R3-7 retested on the relayer submodule (`70b25f6f`) and still hold (Red).
 
@@ -23,6 +24,7 @@ R3-5 and R3-7 retested on the relayer submodule (`70b25f6f`) and still hold (Red
 
 - `653990b8` Built sites fail closed: if `/ohttp.json` is missing, not JSON or incomplete, `ohttp()` throws (not cached, so it retries) instead of returning null. Only the Vite dev server may run without it. Red's `test-ohttp-fallback.mjs` now throws on the 404 case instead of going direct (R4-1).
 - `976fd8f0` Wallet whitelist and registration status are read through `privateElection()`, once per wallet and again after registering, not on every refresh over the direct RPC. If the private channel is down, the register panel says so rather than guessing (R4-2).
+- `746c90ce` Votes are always proven at depth 20 with `wasm`/`zkey` served by the site (`site/public/snark/`, 5.7 MB, from PSE's 4.13.0 release, sha256 `6f71e555…` / `33f9a067…`) and prefetched on page load, so nothing contacts pse.dev and the fetch isn't timed to the vote. Shorter Merkle proofs are padded; a depth-20 proof for a 3-member group verifies (R4-7).
 
 ## Round 3 (2026-11-16)
 
