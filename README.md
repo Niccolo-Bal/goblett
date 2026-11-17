@@ -30,22 +30,30 @@ explained quite succinctly [HERE](https://docs.semaphore.pse.dev/technical-refer
 
 The main limitation that comes with Semaphore is that though group membership is masked, the secondary wallet is fully traceable.
 In the case of elections, this means it would be fairly easy to deduce which main wallet corresponds to which secondary one based off
-IP and election overlap. To achieve complete anonymity, you would need to create and fund (secretely) a new burner wallet for every
+IP and election overlap. To achieve complete anonymity, you would need to create and secretely fund a new burner wallet for every
 election, and use Tor for any transactions from burner wallets.
 
-Goblett kills two birds with one stone by having an oblivious funded relayer forward both registrations and votes to the on-chain 
+Goblett kills three birds with one stone by having an oblivious funded relayer forward both registrations and votes to the on-chain 
 election. The relayer listens to a [Nostr](https://nostr.org/) topic, so no Web2 endpoint needs to be trusted, and cannot modify
 ballots without invalidating the proof. Additionally, anyone can set up a Goblett relayer, and is rewarded for doing so by receiving
-refund of gas paid plus a bounty from the contract (which is funded upon creation).
+refund of gas paid plus a bounty from the contract (which is funded upon creation), so no relayer is trusted.
 
 <center>
 <img src="media/Goblett%20Diagram.png" alt="A sleeping orange cat">
 </center>
 
-During the registration phase of a Goblett election, users sign a commitment hashed from their Semaphore secrete and send it
-through an [OHTTP](https://en.wikipedia.org/wiki/Oblivious_HTTP)
+During the registration phase of a Goblett election, users sign a nullifier and commitment hashed from their Semaphore secrete and send 
+it through an [OHTTP](https://en.wikipedia.org/wiki/Oblivious_HTTP) to the Nostr topic tagged `goblett-<chain id>` (5042 for Arc),
+where it is then test-proved by a relayer before being forwarded to the election. After the registration ends, same is then done
+for the vote, this time proved with Semaphore. A nullifier is necessary, as not being able to tell where the vote came paired with the
+nondeterministic Semaphore proofs means without it voters could send infinitely many votes. At the end of the voting phase, anyone
+can then see who got the most votes and a consensus is made.
 
-### Semaphore deployments:
+Arc is used because its lack of fluctuation in both its native token ($USDC) and its gas fees means that every election costs the same,
+every time. Semaphore was not yet on Arc, so we needed to deploy our own copies. The novelty of it causes no drawbacks, since voters
+can sign and register with any secrete key (since they never actually touch the blockchain).
+
+### Semaphore Deployments:
 
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Arc testnet:  &nbsp; [0x78e50FBA810bb1496c8C1c5209F491AB1Aa8a743](
   https://explorer.testnet.arc.io/address/0x78e50FBA810bb1496c8C1c5209F491AB1Aa8a743)
@@ -64,8 +72,8 @@ through an [OHTTP](https://en.wikipedia.org/wiki/Oblivious_HTTP)
 ### Why not use wallets for semaphore identities?
 
 This seems appealing, as it removes the need for the registration period (commitments are addresses, secretes are private keys), and was
-the initial idea for the project. However, Metamask and every other wallet has no native support for making semaphore proofs, only 
-signatures (which tie to the address). So doing this would require users to copy their private keys directly onto the website, 
+actually the initial idea for the project. However, Metamask and every other wallet has no native support for making semaphore proofs, 
+only signatures (which tie to the address). So doing this would require users to copy their private keys directly onto the website, 
 which is a huge security risk.
 
 ## Front-End Implementation
