@@ -1,23 +1,21 @@
 # goblett audit: status report
 
-Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + report).
+Branch `Grok`, reset to `main` `9653e7b9` (the version goblett.xyz serves) on 2026-11-16. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + report). Round 1 and 2 findings were against the older code and are dropped; only what still reproduces is carried over.
 
-## Round 1 (2026-11-14)
+Scope this round: `main` on Arc Testnet (chain 5042002) plus local copies. Any contract may be tested. IP linking is out of scope (no OHTTP yet) but noted for later.
 
-**Status:** no exploits found. On a live anvil chain with real proofs, Red tried each of these and all held: nullifier and message aliasing past the field modulus, replay, `registerFor` signature edge cases (v=0/1, cross-wallet replay, odd ERC-1271 returns), phase-boundary timestamps, and an IRV differential fuzz (2,000 runs). The worst IRV gas case found was about 353k, far below the ~11M accepted ceiling.
+## Round 3 (2026-11-16)
 
-### Findings
+| # | Title | Severity | Status |
+|---|-------|----------|--------|
+| R3-1 | `relayer/relayer.env` is committed with a funded `DEPLOYER_KEY` (`0x273d…383d`, about 39 USDC) | High | Untracked `1520e434`. **Key is still in git history: rotate it and move the funds.** |
+| R3-2 | Duplicate whitelist entries can push `minAnonymitySet` past the distinct voters and brick voting (was R2-1) | Low | Fixed `1520e434` |
+| R1-1 | Anonymity set counts registrations, not honest voters | Info | Design note, still applies |
 
-| # | Title | Severity | Goal | Status |
-|---|-------|----------|------|--------|
-| R1-1 | Anonymity set counts registrations, not honest voters | Info | 1, 3 | Design note, no code fix |
-| R1-2 | `scope` fixes the deploy-time chain ID, but the EIP-712 domain reads it live | Info | 4 | Noted, no fix yet |
+**R3-1.** Found by Red. `common.py` now loads `relayer/.env` first (as its docstring and `.env.example` already said) and still reads `relayer.env` if present; both are gitignored.
 
-**R1-1.** `registeredCount` counts registrations. Anyone who controls K whitelisted wallets can register K identities, including throwaway commitments with no known secret, and so meet `minAnonymitySet` with a set that looks real but is empty. Mitigation: govern the whitelist and size `minAnonymitySet` to the expected *honest* turnout, not to the whitelist length.
-
-**R1-2.** `Election.sol:134` sets `scope` from `block.chainid` at deploy time, while `Election.sol:189` computes the domain separator from the live chain ID. After a fork, `registerFor` signatures stop working on the new chain but proofs keep working there. This is an inconsistency, not an exploit. Possible fix: store the deploy chain ID and revert `vote`/`register` when `block.chainid` differs.
+**R1-1.** Anyone controlling K whitelisted wallets can register K throwaway identities and meet `minAnonymitySet` with an empty set. Size the threshold to expected honest turnout.
 
 ### Commits
 
-- `d910094` Added this report (R1-1 design note).
-- Round 1 results and the R1-2 Info note.
+- `1520e434` Untracked `relayer/relayer.env`, gitignored it, and made `common.py` load `relayer/.env` (R3-1). Ported the duplicate-whitelist revert and its test to the new `Election.sol` (R3-2). Forge: 167 passed, 0 failed.
