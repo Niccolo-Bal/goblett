@@ -151,7 +151,7 @@ async function _refresh() {
   $("title").textContent = title
   $("info").innerHTML = `
     <dt>Type</dt><dd>${cfg.kind === "ranked" ? "Ranked choice (instant runoff)" : "First past the post"}</dd>
-    <dt>Phase</dt><dd><b>${phase}</b></dd>
+    <dt>Phase</dt><dd><b>${esc(phase)}</b></dd>
     <dt>Chain time</dt><dd>${t(block.timestamp)}</dd>
     <dt>Registration until</dt><dd>${t(regEnd)}</dd>
     <dt>Voting</dt><dd>${t(vStart)} → ${t(vEnd)}</dd>
