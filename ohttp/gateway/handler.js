@@ -28,6 +28,7 @@
 
 import { AEAD_AES_128_GCM, CipherSuite, KDF_HKDF_SHA256, KEM_DHKEM_P256_HKDF_SHA256 } from "hpke"
 import { KeyConfig, OHTTPServer } from "ohttp-ts"
+import { verifyEvent } from "nostr-tools/pure"
 
 // P-256 because every browser's WebCrypto has it (X25519 is still missing from older ones).
 export const SUITE = new CipherSuite(KEM_DHKEM_P256_HKDF_SHA256, KDF_HKDF_SHA256, AEAD_AES_128_GCM)
@@ -37,6 +38,7 @@ const KIND_REQUEST = 9467 // must match site/nostr.js and the relayer's nostr.py
 const MAX_EVENT_BYTES = 24 * 1024
 const MAX_RPC_BYTES = 16 * 1024
 const MAX_RPC_BATCH = 20
+const MAX_CALL_GAS = 30_000_000n // well above any goblett view (commitments() of a big group)
 const PUBLISH_TIMEOUT_MS = 6000
 // Reads the site needs to confirm a registration or vote and to build a proof. Nothing
 // that sends a transaction or scans logs.
@@ -103,7 +105,9 @@ export function createGateway(env, { fetchImpl = fetch, WebSocketImpl = globalTh
     const wellFormed =
       ev && typeof ev === "object" && /^[0-9a-f]{64}$/.test(ev.id) && /^[0-9a-f]{64}$/.test(ev.pubkey) && /^[0-9a-f]{128}$/.test(ev.sig) &&
       typeof ev.content === "string" && Array.isArray(ev.tags) && Number.isInteger(ev.created_at)
-    if (!wellFormed) return json(400, { error: "not a signed Nostr event" })
+    // Check the id and signature here, so a forged event costs the sender a 400, not a
+    // connection to every Nostr relay (R4-5).
+    if (!wellFormed || !verifyEvent(ev)) return json(400, { error: "not a signed Nostr event" })
     // Only goblett requests for the chains we serve: this is not a general Nostr publisher.
     const onTopic = ev.tags.some((t) => Array.isArray(t) && t[0] === "t" && topics.has(t[1]))
     if (ev.kind !== KIND_REQUEST || !onTopic) return json(403, { error: "only goblett registration/vote events are forwarded" })
@@ -129,7 +133,23 @@ export function createGateway(env, { fetchImpl = fetch, WebSocketImpl = globalTh
     if (!calls.length || calls.length > MAX_RPC_BATCH) return json(400, { error: `1 to ${MAX_RPC_BATCH} calls per request` })
     const bad = calls.find((c) => !c || typeof c !== "object" || !RPC_METHODS.has(c.method))
     if (bad) return json(403, { error: `method not allowed: ${String(bad?.method)}` })
-    const upstream = await fetchImpl(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: text })
+    // No full-transaction blocks (the site only needs the header) and a gas cap on calls,
+    // so each request costs the upstream RPC about what the site itself would (R4-5).
+    if (calls.some((c) => c.method === "eth_getBlockByNumber" && c.params?.[1] === true)) return json(403, { error: "full-transaction blocks are not served" })
+    for (const c of calls) {
+      if (c.method !== "eth_call") continue
+      const tx = c.params?.[0]
+      if (!tx || typeof tx !== "object") return json(400, { error: "eth_call needs a call object" })
+      let gas
+      try {
+        gas = tx.gas === undefined ? undefined : BigInt(tx.gas)
+      } catch {
+        return json(400, { error: "bad gas value" })
+      }
+      if (gas === undefined || gas > MAX_CALL_GAS) tx.gas = "0x" + MAX_CALL_GAS.toString(16)
+    }
+    if (calls.some((c) => c.method === "eth_call" && c.params?.length > 2)) return json(403, { error: "state overrides are not allowed" })
+    const upstream = await fetchImpl(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
     return new Response(await upstream.text(), { status: upstream.status, headers: { "Content-Type": "application/json" } })
   }
 
