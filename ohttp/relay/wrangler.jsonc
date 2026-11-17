@@ -1,0 +1,14 @@
+// OHTTP relay Worker. Deploy from this folder: `npx wrangler deploy`.
+{
+  "name": "goblett-ohttp-relay",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-16",
+  "workers_dev": false,
+  "routes": [{ "pattern": "relay.goblett.xyz", "custom_domain": true }],
+  // No logs: the relay must not keep a record of which address sent something when.
+  "observability": { "enabled": false },
+  "vars": {
+    "GATEWAY_URL": "https://gateway.goblett.xyz/",
+    "ALLOWED_ORIGINS": "https://goblett.xyz,http://localhost:5173"
+  }
+}

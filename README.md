@@ -44,14 +44,15 @@ refund of gas paid plus a bounty from the contract (which is funded upon creatio
 
 During the registration phase of a Goblett election, users sign a nullifier and commitment hashed from their Semaphore secrete and send 
 it through an [OHTTP](https://en.wikipedia.org/wiki/Oblivious_HTTP) to the Nostr topic tagged `goblett-<chain id>` (5042 for Arc),
-where it is then test-proved by a relayer before being forwarded to the election. After the registration ends, same is then done
+where it is then test-proved by a relayer before being forwarded to the election. After the registration ends, the same is then done
 for the vote, this time proved with Semaphore. A nullifier is necessary, as not being able to tell where the vote came paired with the
 nondeterministic Semaphore proofs means without it voters could send infinitely many votes. At the end of the voting phase, anyone
 can then see who got the most votes and a consensus is made.
 
-Arc is used because its lack of fluctuation in both its native token ($USDC) and its gas fees means that every election costs the same,
-every time. Semaphore was not yet on Arc, so we needed to deploy our own copies. The novelty of it causes no drawbacks, since voters
-can sign and register with any secrete key (since they never actually touch the blockchain).
+Arc is used because its lack of fluctuation in both its native token ($USDC) and its gas fees mean that every election costs the same
+every time, and election contracts can't be underfunded. Semaphore was not yet on Arc, so we needed to deploy our own copies. The
+novelty of Arc causes no drawbacks, since voters can sign and register with any secrete key (since they never actually touch the 
+blockchain).
 
 ### Semaphore Deployments:
 
@@ -95,25 +96,22 @@ We chose not to take that approach for this hackathon.
 
 This is the only open vulnerability, and is a fairly weak one. Attackers could spam the topic with pointless messages or 
 false proofs, leading to what could amount to many false expensive checks for relayers. Most Nostr nodes have some level
-of IP or pubkey rate limit though, so the problem would largely fix itself. Though a coordinated attack is still a
-possible risk (though this only impacts the Web2 portion of Goblett, the DApp would remain unaffected).
+of IP or pubkey rate limit though, so the problem would largely fix itself. A coordinated attack is still a
+possible risk. This only impacts the Web2 portion of Goblett, the DApp would remain unaffected.
 
 ### Unencrypted Votes
 
-Votes are signed, and cannot be modified without changing the proof, but contain the vote unencrypted. This means 
+Votes are signed and cannot be modified without changing the proof, but contain the vote unencrypted. This means 
 that if you can tie a voter to a vote (or to a specific time), you can tie them to who they voted for. GAMI and other
 systems get around this by having a trusted party decrypt the votes and then publishing results with an sk-SNARK proof, 
 but this solution and other similar ones require trust. However, tieing a voter to a vote is already a breach of security,
 so for an airtight system, this doesn't arise as an issue.   
 
-### OHTTP Not Truely Oblivious
+### OHTTP Not Truly Oblivious
 
-The current OHTTP setup uses the built-in Cloudflare OHTTP relay system which, though it is reportedly self-audited, means that
-Cloudflare could pair the IP + unencrypted messages.
+The current OHTTP setup uses a relayer run by us, so we could hypothetically pair IPs with unencrypted messages.
 
-The fix for this would be to have one party run the decrypter, and have 3rd party (or many) run the OHTTP. Though this requires trust
-that there is no collusion, and opens up the possibility for the OHTTP host to not forward unwanted IPs. This could be solved by
-allowing anyone to run an OHTTP or decrypter, which would work at scale.
+The fix for this would be to have a third party or many parties run the relayer, which would be possible to implement with more time.
 
 ## Grok Bot Usage (for SpaceXSI Bounty)
 

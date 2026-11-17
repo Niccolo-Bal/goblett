@@ -1,0 +1,14 @@
+{
+  "name": "goblett-ohttp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs",
+    "keygen": "node keygen.mjs",
+    "gateway": "node gateway/server.mjs"
+  },
+  "dependencies": {
+    "hpke": "1.1.8",
+    "ohttp-ts": "0.6.2"
+  }
+}

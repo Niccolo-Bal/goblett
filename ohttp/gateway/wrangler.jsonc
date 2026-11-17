@@ -1,0 +1,19 @@
+// OHTTP gateway as a Cloudflare Worker. Deploy from this folder: `npx wrangler deploy`,
+// then set the key once: `npx wrangler secret put OHTTP_SEED` (from `node ../keygen.mjs`).
+//
+// Running the gateway on Cloudflare means the relay and the gateway share a host, so
+// Cloudflare could in principle match senders to messages. For a real split, run the
+// gateway elsewhere (`node gateway/server.mjs`) and point the relay's GATEWAY_URL at it.
+{
+  "name": "goblett-ohttp-gateway",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-16",
+  "workers_dev": false,
+  "routes": [{ "pattern": "gateway.goblett.xyz", "custom_domain": true }],
+  // No logs: the gateway must not keep a record of what it forwarded when.
+  "observability": { "enabled": false },
+  "vars": {
+    "NOSTR_RELAYS": "wss://nos.lol,wss://relay.primal.net",
+    "RPC_URLS": "{\"5042\":\"https://rpc.mainnet.arc.io\",\"5042002\":\"https://rpc.testnet.arc.io\"}"
+  }
+}
