@@ -20,14 +20,15 @@ SITE_CONFIG_PATH = HERE.parent / "site" / "public" / "election.json"
 def _load_dotenv():
     """Read KEY=VALUE lines from relayer/.env (gitignored) into the environment.
     Real environment variables win. Keeps private keys out of the repo and the shell history."""
-    path = HERE / "relayer.env"
-    if not path.exists():
-        return
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    # relayer.env is the old name; both are gitignored now (R3-1: it was committed with a live key).
+    for path in (HERE / ".env", HERE / "relayer.env"):
+        if not path.exists():
+            continue
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
 _load_dotenv()

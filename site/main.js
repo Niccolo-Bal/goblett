@@ -18,6 +18,21 @@ import { publish, confirm } from "./nostr.js"
 // ABI + creation bytecode of both election types, exported by relayer/setup_chain.py.
 import CONTRACTS from "./contracts.json"
 
+const maskImmutables = (hex, refs) => {
+  const b = ethers.getBytes(hex)
+  for (const list of Object.values(refs ?? {})) for (const r of list) b.fill(0, r.start, r.start + r.length)
+  return ethers.hexlify(b)
+}
+const TEMPLATES = Object.fromEntries(
+  ["fptp", "ranked"].filter((k) => CONTRACTS[k]?.deployedBytecode).map((k) => [k, maskImmutables(CONTRACTS[k].deployedBytecode, CONTRACTS[k].immutableReferences)])
+)
+const matchKind = (code) => {
+  for (const [k, t] of Object.entries(TEMPLATES)) {
+    if (code.length === t.length && maskImmutables(code, CONTRACTS[k].immutableReferences) === t) return k
+  }
+  return null
+}
+
 const ABI = [
   "function title() view returns (string)",
   "function MAX_CANDIDATES() view returns (uint256)",
@@ -30,6 +45,7 @@ const ABI = [
   "function registeredCount() view returns (uint256)",
   "function totalVotes() view returns (uint256)",
   "function scope() view returns (uint256)",
+  "function semaphore() view returns (address)",
   "function isWhitelisted(address) view returns (bool)",
   "function hasRegistered(address) view returns (bool)",
   "function nullifierUsed(uint256) view returns (bool)",
@@ -44,11 +60,13 @@ const ABI = [
 ]
 
 const $ = (id) => document.getElementById(id)
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const log = (msg) => {
   $("log").textContent = `${new Date().toLocaleTimeString()}  ${msg}\n` + $("log").textContent
 }
 const setStatus = (id, msg, cls = "") => {
-  $(id).innerHTML = msg ? `<p class="${cls}">${msg}</p>` : ""
+  // Escaped: messages can carry unauthenticated Nostr reply text or revert reasons (R3-3).
+  $(id).innerHTML = msg ? `<p class="${esc(cls)}">${esc(msg)}</p>` : ""
 }
 
 let cfg, provider, election, account, state
@@ -97,8 +115,14 @@ async function init() {
   }
   try {
     if (fromUrl) cfg.election = ethers.getAddress(fromUrl)
+    // Verify before rendering anything the contract returns (R3-6): its runtime code
+    // must match our build with immutables masked, as in the relayer's lookup_election,
+    // and it must use the configured Semaphore.
+    const kind = matchKind(await provider.getCode(cfg.election))
+    if (!kind) throw new Error("not a goblett election")
     const c = new ethers.Contract(cfg.election, ABI, provider)
-    cfg.kind = (await c.MAX_CANDIDATES()) === 32n ? "ranked" : "fptp"
+    if (ethers.getAddress(await c.semaphore()) !== ethers.getAddress(cfg.semaphore)) throw new Error("unknown Semaphore")
+    cfg.kind = kind
     election = c
   } catch (e) {
     $("title").textContent = `No goblett election at ${fromUrl ?? cfg.election} on chain ${cfg.chainId}. Create one below.`
@@ -149,7 +173,7 @@ async function _refresh() {
   $("title").textContent = title
   $("info").innerHTML = `
     <dt>Type</dt><dd>${cfg.kind === "ranked" ? "Ranked choice (instant runoff)" : "First past the post"}</dd>
-    <dt>Phase</dt><dd><b>${phase}</b></dd>
+    <dt>Phase</dt><dd><b>${esc(phase)}</b></dd>
     <dt>Chain time</dt><dd>${t(block.timestamp)}</dd>
     <dt>Registration until</dt><dd>${t(regEnd)}</dd>
     <dt>Voting</dt><dd>${t(vStart)} → ${t(vEnd)}</dd>
@@ -335,7 +359,7 @@ function renderIdentities() {
   const prev = sel.value
   const ids = loadIdentities()
   sel.innerHTML = ids.length
-    ? ids.map((x) => `<option value="${x.label}">${x.label.startsWith("0x") ? "registered by " + x.label.slice(0, 10) + "…" : x.label}</option>`).join("")
+    ? ids.map((x) => `<option value="${esc(x.label)}">${esc(x.label.startsWith("0x") ? "registered by " + x.label.slice(0, 10) + "…" : x.label)}</option>`).join("")
     : `<option value="">(no identity in this browser)</option>`
   if (ids.some((x) => x.label === prev)) sel.value = prev
 }
@@ -401,7 +425,10 @@ async function vote() {
 
     const ballot = selectedBallot()
     const message = cfg.kind === "ranked" ? pack(ballot) : BigInt(ballot)
-    const scope = await election.scope()
+    // Bind the proof to this address: a look-alike contract could otherwise return
+    // another election's scope and get a proof that counts there (R3-4).
+    const scope = BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["uint256", "address"], [cfg.chainId, cfg.election])))
+    if (scope !== (await election.scope())) throw new Error("This contract's scope does not match its address. It is not a genuine goblett election.")
     setStatus("voteStatus", `Generating zero-knowledge proof (${group.size} registered)… first time downloads the circuit, ~10-30 s`, "muted")
     const proof = await generateProof(identity, group, message, scope)
 
@@ -578,7 +605,7 @@ async function renderResults() {
       const w = (await election.winners()).map((i) => state.cands[Number(i)])
       html += `<p><b>${w.length > 1 ? "Tie: " : "Winner: "}${w.map(esc).join(", ")}</b></p>`
     } catch (e) {
-      html += `<p class="err">winners() failed: ${errMsg(e)}</p>`
+      html += `<p class="err">winners() failed: ${esc(errMsg(e))}</p>`
     }
   }
   $("tally").innerHTML = html
@@ -588,7 +615,6 @@ async function renderResults() {
 // Helpers + wiring
 // ---------------------------------------------------------------------------
 const short = (x) => String(x).slice(0, 10) + "…"
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 
 $("connect").onclick = () => connect().catch((e) => log(e.message))
 $("registerBtn").onclick = register

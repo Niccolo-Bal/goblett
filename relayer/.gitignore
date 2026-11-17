@@ -5,3 +5,4 @@ election.json
 relayer.log
 # private keys
 .env
+relayer.env
