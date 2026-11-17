@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>goblet</title>
+    <title>goblett</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <header>
-      <h1>goblet</h1>
+      <h1>goblett</h1>
       <div id="wallet">
         <span id="account" class="muted">not connected</span>
         <button id="connect">Connect MetaMask</button>
@@ -19,24 +19,24 @@
       <section id="election" class="card">
         <h2 id="title">Loading election…</h2>
         <dl id="info"></dl>
-        <button id="refresh" class="secondary">Refresh</button>
+        <button id="refresh" class="secondary needs-election">Refresh</button>
       </section>
 
-      <section id="register" class="card">
+      <section id="register" class="card needs-election">
         <h2>1. Register (linked to your wallet)</h2>
         <p class="muted">
           Generates a secret identity in this browser and signs its public commitment with MetaMask.
-          The relayer submits it, so your wallet needs no gas. The signature carries no vote.
+          It is published to Nostr and a relayer puts it on-chain, so your wallet needs no gas. The signature carries no vote.
         </p>
         <div id="regStatus"></div>
         <button id="registerBtn" disabled>Create identity &amp; sign registration</button>
       </section>
 
-      <section id="vote" class="card">
+      <section id="vote" class="card needs-election">
         <h2>2. Vote (anonymous)</h2>
         <p class="muted">
           Needs no wallet. Your browser proves "I hold one of the registered identities" without saying which,
-          and sends only the proof to the relayer.
+          and publishes only the proof to Nostr under a throwaway key, for any relayer to submit.
         </p>
         <label>Identity
           <select id="identitySel"></select>
@@ -46,12 +46,12 @@
         <div id="voteStatus"></div>
       </section>
 
-      <section id="results" class="card">
+      <section id="results" class="card needs-election">
         <h2>Results</h2>
         <div id="tally"></div>
       </section>
 
-      <section class="card">
+      <section class="card needs-election">
         <h2>Backup / import identity</h2>
         <p class="muted">The secret is the only way to vote. Anyone holding it can vote as you and see your vote.</p>
         <button id="exportBtn" class="secondary">Show secret for selected identity</button>
@@ -59,6 +59,34 @@
         <input id="importTxt" placeholder="paste exported secret" />
         <button id="importBtn" class="secondary">Import</button>
       </section>
+
+      <details id="createCard" class="card">
+        <summary><h2>Create a new election</h2></summary>
+        <p class="muted">
+          Deploys a new election contract from your MetaMask wallet, which pays the gas. Everything is fixed at
+          deployment: nobody, including you, can change the voters, candidates or schedule afterwards.
+        </p>
+        <label>Title <input id="newTitle" placeholder="e.g. Club president 2026" /></label>
+        <label>Type
+          <select id="newKind">
+            <option value="fptp">First past the post (pick one)</option>
+            <option value="ranked">Ranked choice (instant runoff)</option>
+          </select>
+        </label>
+        <label>Candidates, one per line <textarea id="newCands" rows="4" placeholder="Alice&#10;Bob&#10;Carol"></textarea></label>
+        <label>Voter wallets (whitelist), one address per line. Empty = just your wallet.
+          <textarea id="newWhitelist" rows="3" placeholder="0x…"></textarea>
+        </label>
+        <label>Registration ends (voting opens at the same moment) <input id="newRegEnd" type="datetime-local" /></label>
+        <label>Voting ends <input id="newVoteEnd" type="datetime-local" /></label>
+        <label>Minimum registrations before voting can open
+          <input id="newMinAnon" type="number" min="1" placeholder="default: 2, or 1 for a single voter" />
+        </label>
+        <p id="chainClock" class="muted"></p>
+        <button id="createBtn">Deploy with MetaMask</button>
+        <div id="createStatus"></div>
+        <div id="recent"></div>
+      </details>
 
       <pre id="log"></pre>
     </main>

@@ -58,7 +58,7 @@ abstract contract Election {
     bytes32 public constant REGISTER_TYPEHASH = keccak256("Register(address wallet,uint256 identityCommitment)");
     bytes32 private constant _DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-    bytes32 private constant _NAME_HASH = keccak256("goblet Election");
+    bytes32 private constant _NAME_HASH = keccak256("goblett Election");
     bytes32 private constant _VERSION_HASH = keccak256("1");
     /// @dev secp256k1n / 2. Signatures with a larger s are the malleable twin of another one.
     uint256 private constant _HALF_N = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;

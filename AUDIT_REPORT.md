@@ -1,4 +1,4 @@
-# goblet audit: status report
+# goblett audit: status report
 
 Branch `Grok`. Team: Scout (code review), Red (exploit PoCs), Blue (fixes + report).
 

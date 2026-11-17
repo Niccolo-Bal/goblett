@@ -1,8 +1,9 @@
-// goblet minimal front-end.
+// goblett minimal front-end.
 //
 // Registration: MetaMask signs EIP-712 Register(wallet, commitment); the relayer
-// submits registerFor. Voting: the browser builds a Semaphore proof and posts it
-// (no wallet, no cookies) to the relayer, which submits vote().
+// submits registerFor. Voting: the browser builds a Semaphore proof and the relayer
+// submits vote(). Both travel as Nostr events on the election's topic (nostr.js);
+// the browser never talks to the relayer directly.
 //
 // The identity secret lives only in this browser's localStorage. It never goes to
 // the relayer: the server would otherwise be able to compute your nullifier
@@ -13,10 +14,13 @@ import { Identity } from "@semaphore-protocol/identity"
 import { Group } from "@semaphore-protocol/group"
 import { generateProof } from "@semaphore-protocol/proof"
 
-const RELAYER = import.meta.env.VITE_RELAYER_URL || "http://localhost:8787"
+import { publish, confirm } from "./nostr.js"
+// ABI + creation bytecode of both election types, exported by relayer/setup_chain.py.
+import CONTRACTS from "./contracts.json"
 
 const ABI = [
   "function title() view returns (string)",
+  "function MAX_CANDIDATES() view returns (uint256)",
   "function candidates() view returns (string[])",
   "function phase() view returns (string)",
   "function registrationEnd() view returns (uint256)",
@@ -48,7 +52,7 @@ let ranking = [] // ranked elections: candidate indices in preference order
 // ---------------------------------------------------------------------------
 // Identity storage (per election, per wallet; local only)
 // ---------------------------------------------------------------------------
-const idPrefix = () => `goblet:id:${cfg.chainId}:${cfg.election.toLowerCase()}:`
+const idPrefix = () => `goblett:id:${cfg.chainId}:${cfg.election.toLowerCase()}:`
 function saveIdentity(label, identity) {
   localStorage.setItem(idPrefix() + label.toLowerCase(), identity.export())
 }
@@ -60,27 +64,64 @@ function loadIdentities() {
   }
   return out
 }
-const votedKey = (commitment) => `goblet:voted:${cfg.election.toLowerCase()}:${commitment}`
+const votedKey = (commitment) => `goblett:voted:${cfg.election.toLowerCase()}:${commitment}`
 
 // ---------------------------------------------------------------------------
 // Chain reads
 // ---------------------------------------------------------------------------
 async function init() {
   try {
-    cfg = await (await fetch(`${RELAYER}/config`)).json()
+    // Public chain config (RPC, Semaphore address, Nostr relays), written by relayer/setup_chain.py.
+    cfg = await (await fetch("/election.json", { cache: "no-store" })).json()
   } catch {
-    $("title").textContent = `Relayer not reachable at ${RELAYER} (retrying…)`
-    return setTimeout(init, 3000)
+    $("title").textContent = "Chain not set up (run relayer/setup_chain.py, then reload)"
+    return
   }
   const net = ethers.Network.from(cfg.chainId)
   provider = new ethers.JsonRpcProvider(cfg.rpcUrl, net, { staticNetwork: net, cacheTimeout: -1 })
-  election = new ethers.Contract(cfg.election, ABI, provider)
+  initCreateForm().catch((e) => log(errMsg(e)))
+
+  // Which election? ?election=0x... in the URL, else the config's default (if any).
+  const q = new URLSearchParams(location.search)
+  const fromUrl = q.get("election")
+  const defaultBlock = cfg.deployBlock
+  if (!fromUrl && !cfg.election) {
+    $("title").textContent = "No election selected. Create one below."
+    $("createCard").open = true
+    return
+  }
+  try {
+    if (fromUrl) cfg.election = ethers.getAddress(fromUrl)
+    const c = new ethers.Contract(cfg.election, ABI, provider)
+    cfg.kind = (await c.MAX_CANDIDATES()) === 32n ? "ranked" : "fptp"
+    cfg.deployBlock = q.get("block") ? Number(q.get("block")) : fromUrl ? await findDeployBlock(cfg.election) : (defaultBlock ?? 0)
+    election = c
+  } catch (e) {
+    $("title").textContent = `No goblett election at ${fromUrl ?? cfg.election} on chain ${cfg.chainId}. Create one below.`
+    $("createCard").open = true
+    return
+  }
+  document.body.classList.add("has-election")
   await refresh()
   setInterval(refresh, 5000)
 }
 
+// First block at which the contract exists (needed as the start of the event query;
+// public RPCs reject log queries from block 0). Binary search on eth_getCode.
+async function findDeployBlock(addr) {
+  let lo = 0
+  let hi = await provider.getBlockNumber()
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if ((await provider.getCode(addr, mid)) !== "0x") hi = mid
+    else lo = mid + 1
+  }
+  return lo
+}
+
 // Show chain errors (node down, no contract at the address) instead of failing silently.
 async function refresh() {
+  if (!election) return
   try {
     await _refresh()
   } catch (e) {
@@ -161,7 +202,7 @@ async function ensureAccountAuthorized() {
   if ((await authorized()).includes(account.toLowerCase())) return
   await eth.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] })
   if (!(await authorized()).includes(account.toLowerCase())) {
-    throw new Error(`MetaMask hasn't authorized ${account} for this site. In MetaMask, open the site connections for localhost:5173, connect this account (and the goblet test network), then retry.`)
+    throw new Error(`MetaMask hasn't authorized ${account} for this site. In MetaMask, open the site connections for localhost:5173, connect this account (and the goblett test network), then retry.`)
   }
 }
 
@@ -179,7 +220,7 @@ async function ensureChain() {
     if (code !== 4902 && code !== -32603) throw e
     await eth.request({
       method: "wallet_addEthereumChain",
-      params: [{ chainId: hex, chainName: `goblet test chain ${cfg.chainId}`, rpcUrls: [cfg.rpcUrl], nativeCurrency: { name: "Test", symbol: "TEST", decimals: 18 } }],
+      params: [{ chainId: hex, chainName: `goblett test chain ${cfg.chainId}`, rpcUrls: [cfg.rpcUrl], nativeCurrency: { name: "Test", symbol: "TEST", decimals: 18 } }],
     })
   }
   const now = await active()
@@ -222,7 +263,7 @@ async function register() {
       identity = new Identity()
       saveIdentity(account, identity)
     }
-    const domain = { name: "goblet Election", version: "1", chainId: cfg.chainId, verifyingContract: cfg.election }
+    const domain = { name: "goblett Election", version: "1", chainId: cfg.chainId, verifyingContract: cfg.election }
     const types = { Register: [{ name: "wallet", type: "address" }, { name: "identityCommitment", type: "uint256" }] }
     const value = { wallet: account, identityCommitment: identity.commitment }
     // Ask MetaMask directly (not via ethers' signer) so its own error message reaches the page.
@@ -244,10 +285,15 @@ async function register() {
     step = "verify signature / send to relayer"
     // Double-check locally before bothering the relayer.
     if (ethers.verifyTypedData(domain, types, value, signature) !== account) throw new Error("signature does not match the connected wallet")
-    setStatus("regStatus", "Sending to relayer…", "muted")
-    const res = await post("/register", { wallet: account, identityCommitment: identity.commitment.toString(), signature })
-    if (!res.ok) throw new Error(res.error)
-    log(`registered, tx ${res.txHash}`)
+    step = "publish to Nostr"
+    setStatus("regStatus", "Publishing to Nostr…", "muted")
+    const sent = await publish(cfg, { type: "register", wallet: account, identityCommitment: identity.commitment.toString(), signature })
+    log(`registration published to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
+    step = "wait for a relayer to put it on-chain"
+    setStatus("regStatus", "Waiting for a relayer to put it on-chain…", "muted")
+    const wallet = account
+    const res = await confirm(cfg, sent.id, () => election.hasRegistered(wallet))
+    log(`registered on-chain${res.txHash ? `, tx ${res.txHash}` : ""}`)
     await refresh()
   } catch (e) {
     console.error(e)
@@ -357,26 +403,112 @@ async function vote() {
     setStatus("voteStatus", `Generating zero-knowledge proof (${group.size} registered)… first time downloads the circuit, ~10-30 s`, "muted")
     const proof = await generateProof(identity, group, message, scope)
 
-    setStatus("voteStatus", "Sending proof to relayer…", "muted")
+    setStatus("voteStatus", "Publishing proof to Nostr…", "muted")
     const body = { proof: { ...proof, points: proof.points.map(String) } }
     if (cfg.kind === "ranked") body.ranking = ballot
-    const res = await post("/vote", body)
-    if (!res.ok) throw new Error(res.error)
+    const sent = await publish(cfg, { type: "vote", ...body })
+    log(`vote published to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
+    setStatus("voteStatus", "Waiting for a relayer to put it on-chain…", "muted")
+    // Don't trust anyone's word: confirm() waits until the nullifier is used on-chain.
+    const res = await confirm(cfg, sent.id, () => election.nullifierUsed(proof.nullifier))
 
-    // Don't trust the relayer's answer: check the nullifier on-chain ourselves.
-    const counted = await election.nullifierUsed(proof.nullifier)
     localStorage.setItem(votedKey(identity.commitment), "1")
-    setStatus(
-      "voteStatus",
-      counted ? `✓ Vote counted. Nullifier ${short(proof.nullifier)} is marked used on-chain.` : "Relayer reported success but the nullifier isn't marked used yet. Refresh in a moment.",
-      counted ? "ok" : "err"
-    )
-    log(`voted, tx ${res.txHash}`)
+    setStatus("voteStatus", `✓ Vote counted. Nullifier ${short(proof.nullifier)} is marked used on-chain.`, "ok")
+    log(`vote on-chain${res.txHash ? `, tx ${res.txHash}` : ""}`)
     await refresh()
   } catch (e) {
     setStatus("voteStatus", `Vote failed: ${errMsg(e)}`, "err")
   } finally {
     updateVoteButton()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Create an election (deployed from the connected wallet, which pays the gas)
+// ---------------------------------------------------------------------------
+const recentKey = () => `goblett:elections:${cfg.chainId}`
+const electionUrl = (e) => `?election=${e.address}&block=${e.block}`
+const lines = (id) => $(id).value.split("\n").map((x) => x.trim()).filter(Boolean)
+// <input type="datetime-local"> works in local time without a zone: "2026-11-16T21:05".
+const toLocalInput = (unix) => {
+  const d = new Date(unix * 1000)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
+const fromLocalInput = (v) => Math.floor(new Date(v).getTime() / 1000)
+// The time the next block will carry (an idle local chain's latest block can be old).
+const chainNow = async () => Math.max(...(await Promise.all([provider.getBlock("pending"), provider.getBlock("latest")])).map((b) => b?.timestamp ?? 0))
+
+async function initCreateForm() {
+  const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]")
+  $("recent").innerHTML = recent.length
+    ? "<p class='muted'>Elections created from this browser:</p>" + recent.map((e) => `<div><a href="${electionUrl(e)}">${esc(e.title)}</a> <span class="muted">${e.address}</span></div>`).join("")
+    : ""
+  const now = await chainNow()
+  $("newRegEnd").value = toLocalInput(now + 15 * 60)
+  $("newVoteEnd").value = toLocalInput(now + 45 * 60)
+  $("chainClock").textContent = `Chain time is now ${new Date(now * 1000).toLocaleString()}. Deadlines are checked against the chain's clock, which on a local test chain can differ from yours.`
+}
+
+async function createElection() {
+  const btn = $("createBtn")
+  btn.disabled = true
+  let step = "check the form"
+  try {
+    const kind = $("newKind").value
+    const title = $("newTitle").value.trim()
+    const cands = lines("newCands")
+    const maxCands = kind === "ranked" ? 32 : 64
+    if (!title) throw new Error("give the election a title")
+    if (cands.length < 2 || cands.length > maxCands) throw new Error(`need 2 to ${maxCands} candidates (one per line)`)
+    if (new Set(cands).size !== cands.length) throw new Error("candidate names must be distinct")
+
+    step = "connect wallet"
+    if (!account) await connect()
+    if (!account) throw new Error("connect MetaMask first")
+    const entered = lines("newWhitelist")
+    const whitelist = [...new Set((entered.length ? entered : [account]).map((a) => {
+      if (!ethers.isAddress(a)) throw new Error(`not an address: ${a}`)
+      return ethers.getAddress(a)
+    }))]
+    const minAnon = Number($("newMinAnon").value || Math.min(2, whitelist.length))
+    if (!(minAnon >= 1 && minAnon <= whitelist.length)) throw new Error(`minimum registrations must be between 1 and ${whitelist.length} (the whitelist size)`)
+
+    const regEnd = fromLocalInput($("newRegEnd").value)
+    const voteEnd = fromLocalInput($("newVoteEnd").value)
+    const now = await chainNow()
+    if (!(regEnd > now + 30)) throw new Error("registration must end in the future (by the chain's clock)")
+    if (!(voteEnd > regEnd)) throw new Error("voting must end after registration ends")
+
+    step = "switch network"
+    await ensureChain()
+    await ensureAccountAuthorized()
+    if ((await provider.getBalance(account)) === 0n) {
+      throw new Error(`${account} has no funds on chain ${cfg.chainId} to pay for the deployment. On the local test chain run: python setup_chain.py --fund ${account}`)
+    }
+
+    step = "confirm the deployment in MetaMask"
+    setStatus("createStatus", "Confirm the deployment in MetaMask…", "muted")
+    const signer = await new ethers.BrowserProvider(eth).getSigner(account)
+    const factory = new ethers.ContractFactory(CONTRACTS[kind].abi, CONTRACTS[kind].bytecode, signer)
+    // Voting opens when registration ends (votingStart = registrationEnd, no gap).
+    const deployTx = await factory.getDeployTransaction(cfg.semaphore, title, cands, whitelist, regEnd, regEnd, voteEnd, minAnon)
+    const tx = await signer.sendTransaction(deployTx)
+
+    step = "wait for the deployment to be mined"
+    setStatus("createStatus", `Deploying… (tx ${short(tx.hash)})`, "muted")
+    const rcpt = await provider.waitForTransaction(tx.hash, 1, 120000)
+    if (!rcpt || rcpt.status !== 1) throw new Error("the deployment transaction failed")
+
+    const entry = { address: rcpt.contractAddress, block: rcpt.blockNumber, title }
+    const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]")
+    localStorage.setItem(recentKey(), JSON.stringify([entry, ...recent].slice(0, 20)))
+    setStatus("createStatus", `✓ Deployed at ${entry.address}. Opening it…`, "ok")
+    location.href = electionUrl(entry)
+  } catch (e) {
+    console.error(e)
+    setStatus("createStatus", `Could not create the election at step "${step}": ${errMsg(e)}`, "err")
+  } finally {
+    btn.disabled = false
   }
 }
 
@@ -405,16 +537,6 @@ async function renderResults() {
 // ---------------------------------------------------------------------------
 // Helpers + wiring
 // ---------------------------------------------------------------------------
-async function post(path, body) {
-  // credentials: "omit" so nothing (cookies etc.) ties the request to an account.
-  const r = await fetch(RELAYER + path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "omit",
-    body: JSON.stringify(body, (_, v) => (typeof v === "bigint" ? v.toString() : v)),
-  })
-  return r.json()
-}
 const short = (x) => String(x).slice(0, 10) + "…"
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 
@@ -422,6 +544,7 @@ $("connect").onclick = () => connect().catch((e) => log(e.message))
 $("registerBtn").onclick = register
 $("voteBtn").onclick = vote
 $("refresh").onclick = refresh
+$("createBtn").onclick = createElection
 $("identitySel").onchange = () => {
   voteResultShown = false
   updateVoteButton()

@@ -66,3 +66,10 @@ pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; margin: 8px
 #log { color: var(--muted); }
 .bar { height: 6px; background: var(--accent); border-radius: 3px; margin: 2px 0 8px; }
 .hint { color: var(--accent); font-weight: 500; }
+body:not(.has-election) .needs-election { display: none; }
+summary { cursor: pointer; }
+summary h2 { display: inline; }
+details[open] summary { margin-bottom: 8px; }
+textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--fg); width: 100%; display: block; }
+details label input, details label select { display: block; width: 100%; }
+a { color: var(--accent); }

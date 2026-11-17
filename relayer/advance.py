@@ -3,6 +3,7 @@
     python advance.py voting     # to votingStart
     python advance.py ended      # to votingEnd
     python advance.py 300        # forward N seconds
+    python advance.py voting 0xElection   # a specific election (default: the one in election.json)
 """
 
 import sys
@@ -11,11 +12,12 @@ from common import artifact, connect, load_config
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) not in (2, 3):
         raise SystemExit(__doc__)
     cfg = load_config()
     w3 = connect()
-    el = w3.eth.contract(address=cfg["election"], abi=artifact("Election")["abi"])
+    addr = w3.to_checksum_address(sys.argv[2] if len(sys.argv) == 3 else cfg["election"])
+    el = w3.eth.contract(address=addr, abi=artifact("Election")["abi"])
     now = w3.eth.get_block("latest").timestamp
     target = {
         "frozen": lambda: el.functions.registrationEnd().call(),

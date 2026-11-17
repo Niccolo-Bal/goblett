@@ -108,7 +108,7 @@ async function main() {
     const factory = new ethers.ContractFactory(elArt.abi, elArt.bytecode.object, deployer)
     const election = await factory.deploy(
         SEMAPHORE,
-        "goblet e2e",
+        "goblett e2e",
         ["Alice", "Bob", "Carol"],
         voterAddrs,
         regEnd,
@@ -137,7 +137,7 @@ async function main() {
     // Last voter signs off-chain (EIP-712, as a browser wallet would) and the
     // relayer pays gas via registerFor.
     const last = voters.length - 1
-    const domain = { name: "goblet Election", version: "1", chainId: net.chainId, verifyingContract: await election.getAddress() }
+    const domain = { name: "goblett Election", version: "1", chainId: net.chainId, verifyingContract: await election.getAddress() }
     const types = { Register: [{ name: "wallet", type: "address" }, { name: "identityCommitment", type: "uint256" }] }
     const value = { wallet: voterAddrs[last], identityCommitment: identities[last].commitment }
     const sig = await voters[last].signTypedData(domain, types, value)
@@ -248,7 +248,7 @@ async function main() {
     console.log("\n[6] FPTPElection on the same Semaphore (message = candidate index)")
     const t0 = await latestTimestamp()
     const fFactory = new ethers.ContractFactory(fptpArt.abi, fptpArt.bytecode.object, deployer)
-    const fptp = await fFactory.deploy(SEMAPHORE, "goblet e2e fptp", ["Alice", "Bob", "Carol"], voterAddrs, t0 + 600, t0 + 1200, t0 + 1800, 3)
+    const fptp = await fFactory.deploy(SEMAPHORE, "goblett e2e fptp", ["Alice", "Bob", "Carol"], voterAddrs, t0 + 600, t0 + 1200, t0 + 1800, 3)
     const fDeploy = await fptp.deploymentTransaction().wait()
     const fScope = await fptp.scope()
     check((await fptp.groupId()) !== groupId && fScope !== scope, "separate Semaphore group and scope")

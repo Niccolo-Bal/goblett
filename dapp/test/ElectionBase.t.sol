@@ -266,7 +266,7 @@ abstract contract ElectionTestBase is Test {
         bytes32 domain = keccak256(
             abi.encode(
                 keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256("goblet Election"),
+                keccak256("goblett Election"),
                 keccak256("1"),
                 block.chainid,
                 address(election)

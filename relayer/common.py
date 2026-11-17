@@ -13,6 +13,7 @@ from web3.exceptions import ContractCustomError, ContractLogicError
 HERE = Path(__file__).resolve().parent
 DAPP = HERE.parent / "dapp"
 CONFIG_PATH = HERE / "election.json"
+SITE_CONFIG_PATH = HERE.parent / "site" / "public" / "election.json"
 
 RPC_URL = os.environ.get("RPC_URL", "http://127.0.0.1:8545")
 # Anvil dev keys (public, test-only). #1 is skipped: Arc testnet blocklists it.
@@ -42,7 +43,7 @@ def connect(rpc_url: str = RPC_URL) -> Web3:
 
 def load_config() -> dict:
     if not CONFIG_PATH.exists():
-        raise SystemExit(f"{CONFIG_PATH.name} not found; run deploy_election.py first")
+        raise SystemExit(f"{CONFIG_PATH.name} not found; run setup_chain.py first")
     return json.loads(CONFIG_PATH.read_text())
 
 
@@ -74,9 +75,11 @@ def revert_reason(e: Exception) -> str:
     return msg[:200]
 
 
-def send(w3: Web3, account, fn, gas_floor: int = 0) -> dict:
+def send(w3: Web3, account, fn, gas_floor: int = 0, gas_cap: int = 0) -> dict:
     """Simulate (estimate_gas reverts with the reason), then sign, send, and wait."""
     gas = fn.estimate_gas({"from": account.address})
+    if gas_cap and gas > gas_cap:
+        raise ValueError(f"needs {gas} gas, over the relayer's limit")
     tx = fn.build_transaction(
         {
             "from": account.address,

@@ -1,5 +1,5 @@
 {
-  "name": "goblet-site",
+  "name": "goblett-site",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,8 @@
     "@semaphore-protocol/group": "4.14.5",
     "@semaphore-protocol/identity": "4.14.5",
     "@semaphore-protocol/proof": "4.14.5",
-    "ethers": "6.17.0"
+    "ethers": "6.17.0",
+    "nostr-tools": "2.26.1"
   },
   "devDependencies": {
     "vite": "6.3.5"

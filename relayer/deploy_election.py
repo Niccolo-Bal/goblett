@@ -1,4 +1,5 @@
-"""Deploy a test election (and Semaphore, if needed) and write relayer/election.json.
+"""Deploy a test election from the command line (and Semaphore, if needed), and make it
+the site's default election. Elections can also be created from the website.
 
 Example (local anvil, times in minutes from now):
     python deploy_election.py --title "Lunch" --candidates Pizza Sushi Tacos \
@@ -10,11 +11,13 @@ Semaphore: reused from election.json if it still has code on this chain, or take
 
 import argparse
 import json
+import time
 
 from eth_account import Account
 from web3 import Web3
 
-from common import CONFIG_PATH, DEPLOYER_KEY, KINDS, RPC_URL, artifact, connect
+from nostr import DEFAULT_RELAYS
+from common import CONFIG_PATH, SITE_CONFIG_PATH, DEPLOYER_KEY, KINDS, RPC_URL, artifact, connect
 
 
 def deploy(w3, acct, art, *args, bytecode=None):
@@ -55,7 +58,7 @@ def deploy_semaphore(w3, acct) -> str:
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--kind", choices=KINDS, default="fptp")
-    p.add_argument("--title", default="goblet test election")
+    p.add_argument("--title", default="goblett test election")
     p.add_argument("--candidates", nargs="+", default=["Alice", "Bob", "Carol"])
     p.add_argument("--whitelist", nargs="+", required=True, help="voter wallet addresses")
     p.add_argument("--reg", type=float, default=10, help="registration window, minutes")
@@ -64,6 +67,7 @@ def main():
     p.add_argument("--min-anon", type=int, default=None, help="min registrations before voting (default: min(2, whitelist))")
     p.add_argument("--semaphore", help="existing Semaphore address")
     p.add_argument("--rpc", default=RPC_URL)
+    p.add_argument("--nostr-relays", nargs="+", help="Nostr relays carrying registrations/votes")
     p.add_argument("--public-rpc", help="RPC URL the browser should use (default: --rpc)")
     a = p.parse_args()
 
@@ -71,19 +75,16 @@ def main():
     acct = Account.from_key(DEPLOYER_KEY)
     chain_id = w3.eth.chain_id
 
-    sem = a.semaphore
-    if not sem and CONFIG_PATH.exists():
-        old = json.loads(CONFIG_PATH.read_text())
-        if old.get("chainId") == chain_id and w3.eth.get_code(old["semaphore"]):
-            sem = old["semaphore"]
-            print(f"reusing Semaphore at {sem}")
-    if not sem:
-        sem = deploy_semaphore(w3, acct)
-    sem = Web3.to_checksum_address(sem)
+    from setup_chain import ensure_chain, export_contracts, write_config
+
+    cfg = ensure_chain(w3, a.public_rpc, a.nostr_relays, a.semaphore)
+    sem = cfg["semaphore"]
 
     whitelist = [Web3.to_checksum_address(x) for x in a.whitelist]
     min_anon = a.min_anon or min(2, len(whitelist))
-    now = w3.eth.get_block("latest").timestamp
+    # The pending block's time, not the latest block's: on an idle local chain the
+    # latest block can be many minutes old, which would put the schedule in the past.
+    now = max(w3.eth.get_block("pending").timestamp, w3.eth.get_block("latest").timestamp)
     reg_end = now + int(a.reg * 60)
     vote_start = reg_end + int(a.gap * 60)
     vote_end = vote_start + int(a.vote * 60)
@@ -92,19 +93,14 @@ def main():
     rcpt = deploy(
         w3, acct, artifact(name), sem, a.title, a.candidates, whitelist, reg_end, vote_start, vote_end, min_anon
     )
-    cfg = {
-        "chainId": chain_id,
-        "rpcUrl": a.public_rpc or a.rpc,
-        "semaphore": sem,
-        "election": rcpt.contractAddress,
-        "kind": a.kind,
-        "deployBlock": rcpt.blockNumber,
-    }
-    CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+    # Becomes the site's default election (the one shown without ?election= in the URL).
+    cfg.update({"election": rcpt.contractAddress, "deployBlock": rcpt.blockNumber})
+    write_config(cfg)
+    export_contracts()
     print(f"{name} '{a.title}' at {rcpt.contractAddress} (block {rcpt.blockNumber})")
     print(f"  candidates {a.candidates}, whitelist {len(whitelist)}, minAnonymitySet {min_anon}")
     print(f"  registration until +{a.reg}m, voting +{a.reg + a.gap}m .. +{a.reg + a.gap + a.vote}m (chain time)")
-    print(f"wrote {CONFIG_PATH}")
+    print(f"open http://localhost:5173/?election={rcpt.contractAddress}&block={rcpt.blockNumber}")
 
 
 if __name__ == "__main__":

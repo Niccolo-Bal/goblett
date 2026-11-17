@@ -1,4 +1,4 @@
-# goblet: anonymous elections on Arc
+# goblett: anonymous elections on Arc
 
 Hackathon project for UBC 2026 (University Blockchain Conference). A DApp on Arc
 (Circle's L1, USDC as gas; testnet chain ID 5042002)
@@ -72,7 +72,7 @@ constructor arguments for both).
    (a Poseidon hash) is public.
 2. **Registration (linked to the wallet, carries no vote):** a whitelisted wallet
    calls `register(C)`, or signs EIP-712 `Register(address wallet,uint256
-   identityCommitment)` (domain: name "goblet Election", version "1", chainId,
+   identityCommitment)` (domain: name "goblett Election", version "1", chainId,
    election address) and anyone relays it via `registerFor(wallet, C, sig)`.
    EOA (low-s ECDSA) and ERC-1271 wallets are supported. `C` becomes a leaf of
    the election's Semaphore Merkle tree.
