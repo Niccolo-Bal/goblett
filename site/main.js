@@ -169,6 +169,7 @@ async function init() {
     return
   }
   document.body.classList.add("has-election")
+  prefetchProofArtifacts()
   await refresh()
   setInterval(refresh, REFRESH_MS)
 }
@@ -468,6 +469,17 @@ function updateVoteButton() {
 // Same encoding as RankedChoiceElection.packRanking: byte i = ranking[i] + 1.
 const pack = (r) => r.reduce((acc, c, i) => acc | (BigInt(c + 1) << BigInt(8 * i)), 0n)
 
+// Proofs always use one self-hosted circuit (R4-7). Left to itself, generateProof
+// downloads the depth-N circuit from snark-artifacts.pse.dev right before publishing,
+// so that third party would see "this IP is voting now". Depth 20 fits 1M voters;
+// shorter Merkle proofs are padded and verify on-chain the same way.
+const PROOF_DEPTH = 20
+const PROOF_ARTIFACTS = { wasm: "/snark/semaphore-20.wasm", zkey: "/snark/semaphore-20.zkey" }
+// Fetch them with the page rather than at vote time, so the request's timing says nothing.
+function prefetchProofArtifacts() {
+  for (const url of Object.values(PROOF_ARTIFACTS)) fetch(url, { cache: "force-cache" }).catch(() => {})
+}
+
 async function vote() {
   $("voteBtn").disabled = true
   try {
@@ -488,8 +500,9 @@ async function vote() {
     // another election's scope and get a proof that counts there (R3-4).
     const scope = BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["uint256", "address"], [cfg.chainId, cfg.election])))
     if (scope !== (await priv.scope())) throw new Error("This contract's scope does not match its address. It is not a genuine goblett election.")
-    setStatus("voteStatus", `Generating zero-knowledge proof (${group.size} registered)… first time downloads the circuit, ~10-30 s`, "muted")
-    const proof = await generateProof(identity, group, message, scope)
+    setStatus("voteStatus", `Generating zero-knowledge proof (${group.size} registered)… ~10-30 s`, "muted")
+    if (group.depth > PROOF_DEPTH) throw new Error(`groups deeper than ${PROOF_DEPTH} are not supported`)
+    const proof = await generateProof(identity, group, message, scope, PROOF_DEPTH, PROOF_ARTIFACTS)
 
     setStatus("voteStatus", "Publishing proof to Nostr…", "muted")
     const body = { proof: { ...proof, points: proof.points.map(String) } }
