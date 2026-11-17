@@ -12,7 +12,7 @@ Niccolo's "round 3". IDs start at R4 so they don't clash with the table below. I
 |---|-------|----------|--------|
 | R4-1 | `ohttp()` returns null on a 404, 5xx or HTML `/ohttp.json` (including the SPA fallback) and caches it, so publishing and private reads silently go direct over the real IP (Scout, Red PoC) | High | Fixed `653990b8` |
 | R4-2 | Every 10 s refresh sends `isWhitelisted(wallet)` and `hasRegistered(wallet)` to the RPC over the direct connection, tying the wallet to the IP (Scout, Red PoC) | Medium | Fixed `976fd8f0` |
-| R4-3 | Same-origin direct requests still leak: the `/api/account` lookup of the connected wallet, election reads in refresh (IP watches election E), | Medium | Open |
+| R4-3 | Same-origin direct requests still leak: the `/api/account` lookup of the connected wallet and election reads in refresh (IP watches election E) | Medium | Open |
 | R4-4 | `/api/account`: a concurrent race lets an older `signed_at` win, a freed username can be squatted at once (risky if whitelists use names), and GET enumerates 100 per call with no rate limit. Live table missing (502) (Red) | Low | Open |
 | R4-5 | The gateway is an open read proxy: any client can do `eth_call` and `eth_getCode` on any contract via `/rpc/5042002` (method allowlist exists) (Red) | Low | Open, needs gateway code |
 | R4-6 | If one party runs both the relay and the gateway (both behind Cloudflare under goblett.xyz), they see IP and plaintext together and OHTTP hides nothing from them. Timing still links a vote to the request that sent it | Design | Waiting on Niccolo: who runs each? |
