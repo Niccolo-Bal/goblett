@@ -124,7 +124,7 @@ const votedKey = (commitment) => `goblett:voted:${cfg.election.toLowerCase()}:${
 // Chain reads
 // ---------------------------------------------------------------------------
 // "testnet" when the page is opened under /testnet, else null (the main network).
-const NETWORK = location.pathname.split("/")[1] === "testnet" ? "testnet" : null
+const NETWORK = location.pathname.split("/")[1] === "testnet" || new URLSearchParams(location.search).get("network") === "testnet" ? "testnet" : null
 
 async function init() {
   try {
@@ -133,7 +133,10 @@ async function init() {
     // election.testnet.json. Same page and code either way.
     cfg = await (await fetch(`/election${NETWORK ? "." + NETWORK : ""}.json`, { cache: "no-store" })).json()
   } catch {
-    $("title").textContent = `Chain not set up${NETWORK ? ` for /${NETWORK}` : ""} (run relayer/setup_chain.py, then reload)`
+    const msg = `Chain not set up${NETWORK ? ` for /${NETWORK}` : ""} (run relayer/setup_chain.py, then reload)`
+    const title = document.getElementById("title")
+    if (title) title.textContent = msg
+    else log(msg)
     return
   }
   if (NETWORK) {
@@ -142,14 +145,14 @@ async function init() {
   }
   const net = ethers.Network.from(cfg.chainId)
   provider = new ethers.JsonRpcProvider(cfg.rpcUrl, net, { staticNetwork: net, cacheTimeout: -1 })
-  initCreateForm().catch((e) => log(errMsg(e)))
+  if (document.getElementById("createBtn")) initCreateForm().catch((e) => log(errMsg(e)))
+  if (!document.getElementById("title")) return
 
   // Which election? ?election=0x... in the URL, else the config's default (if any).
   const q = new URLSearchParams(location.search)
   const fromUrl = q.get("election")
   if (!fromUrl && !cfg.election) {
-    $("title").textContent = "No election selected. Create one below."
-    $("createCard").open = true
+    $("title").textContent = "No election selected."
     return
   }
   try {
@@ -164,8 +167,7 @@ async function init() {
     cfg.kind = kind
     election = c
   } catch (e) {
-    $("title").textContent = `No goblett election at ${fromUrl ?? cfg.election} on chain ${cfg.chainId}. Create one below.`
-    $("createCard").open = true
+    $("title").textContent = `No goblett election at ${fromUrl ?? cfg.election} on chain ${cfg.chainId}.`
     return
   }
   document.body.classList.add("has-election")
@@ -531,8 +533,10 @@ async function vote() {
 let username // of the connected wallet, if it has one
 
 function renderAccount() {
-  $("account").textContent = !account ? "not connected" : username ? `${username} (${account.slice(0, 6)}…${account.slice(-4)})` : account
-  $("accountCard").hidden = !account
+  const label = $("account")
+  if (label) label.textContent = !account ? "not connected" : username ? `${username} (${account.slice(0, 6)}…${account.slice(-4)})` : account
+  const card = $("accountCard")
+  if (card) card.hidden = !account
 }
 
 // The username lookup sends the wallet address to goblett's server over a direct
@@ -617,7 +621,7 @@ function previewWhitelist() {
 // Create an election (deployed from the connected wallet, which pays the gas)
 // ---------------------------------------------------------------------------
 const recentKey = () => `goblett:elections:${cfg.chainId}`
-const electionUrl = (e) => `?election=${e.address}`
+const electionUrl = (e) => `/vote.html?election=${e.address}${NETWORK ? "&network=testnet" : ""}`
 const lines = (id) => $(id).value.split("\n").map((x) => x.trim()).filter(Boolean)
 // <input type="datetime-local"> works in local time without a zone: "2026-11-16T21:05".
 const toLocalInput = (unix) => {
@@ -777,24 +781,28 @@ async function renderResults() {
 // ---------------------------------------------------------------------------
 const short = (x) => String(x).slice(0, 10) + "…"
 
-$("connect").onclick = () => connect().catch((e) => log(e.message))
-$("registerBtn").onclick = register
-$("voteBtn").onclick = vote
-$("refresh").onclick = refresh
-$("createBtn").onclick = createElection
-$("usernameBtn").onclick = saveUsername
-$("lookupBtn").onclick = loadAccount
-$("newWhitelist").addEventListener("input", previewWhitelist)
-$("reclaimBtn").onclick = reclaim
-$("identitySel").onchange = () => {
+const on = (id, ev, fn) => {
+  const el = document.getElementById(id)
+  if (el) el.addEventListener(ev, fn)
+}
+on("connect", "click", () => connect().catch((e) => log(e.message)))
+on("registerBtn", "click", register)
+on("voteBtn", "click", vote)
+on("refresh", "click", refresh)
+on("createBtn", "click", createElection)
+on("usernameBtn", "click", saveUsername)
+on("lookupBtn", "click", loadAccount)
+on("newWhitelist", "input", previewWhitelist)
+on("reclaimBtn", "click", reclaim)
+on("identitySel", "change", () => {
   voteResultShown = false
   updateVoteButton()
-}
-$("exportBtn").onclick = () => {
+})
+on("exportBtn", "click", () => {
   const x = loadIdentities().find((i) => i.label === $("identitySel").value)
   $("exported").textContent = x ? x.identity.export() : "no identity selected"
-}
-$("importBtn").onclick = () => {
+})
+on("importBtn", "click", () => {
   try {
     const identity = Identity.import($("importTxt").value.trim())
     saveIdentity(account ?? "imported-" + identity.commitment.toString().slice(0, 8), identity)
@@ -804,6 +812,6 @@ $("importBtn").onclick = () => {
   } catch (e) {
     log(`import failed: ${e.message}`)
   }
-}
+})
 
 init().catch((e) => log(e.message))

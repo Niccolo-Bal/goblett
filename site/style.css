@@ -49,10 +49,35 @@ body.home { min-height: 100vh; overflow-x: hidden; }
 body.home header,
 body.home main { position: relative; z-index: 1; }
 body.home header {
+  position: sticky;
+  top: 0;
   background: color-mix(in srgb, var(--bg) 70%, transparent);
   backdrop-filter: blur(14px);
 }
-body.home main { min-height: calc(100vh - 57px); align-content: center; }
+body.home main { max-width: 880px; align-content: start; }
+.intro {
+  position: relative;
+  min-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 8px 18vh;
+}
+.intro h2 {
+  margin: 0 0 16px;
+  max-width: 9em;
+  font-size: clamp(46px, 7vw, 78px);
+  font-weight: 560;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+.intro p { margin: 0; max-width: 22em; font-size: 18px; color: var(--muted); }
+.scroll-cue {
+  margin-top: 40px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
 body.home .card {
   background: color-mix(in srgb, var(--card) 78%, transparent);
   backdrop-filter: blur(18px);
@@ -107,9 +132,10 @@ body.home .card {
 }
 .bg-chain {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 7%;
+  left: 50%;
+  bottom: 28px;
+  width: 100vw;
+  margin-left: -50vw;
   opacity: 0.16;
   overflow: hidden;
 }
@@ -173,7 +199,12 @@ body.home .card {
 @media (prefers-reduced-motion: reduce) {
   .orb, .grid, .bg-chain-track { animation: none; }
 }
-.home-hero { text-align: center; padding: 48px 24px; }
+nav { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+nav a { color: var(--fg); text-decoration: none; }
+.paths { display: grid; gap: 12px; margin-bottom: 72px; }
+a.path { display: block; color: inherit; text-decoration: none; background-image: none; }
+a.path h2 { margin: 0 0 4px; }
+.page-card p { margin: 0 0 12px; }
 a.enter {
   display: inline-block;
   margin-top: 4px;
