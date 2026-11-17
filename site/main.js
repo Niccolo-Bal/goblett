@@ -18,6 +18,21 @@ import { publish, confirm } from "./nostr.js"
 // ABI + creation bytecode of both election types, exported by relayer/setup_chain.py.
 import CONTRACTS from "./contracts.json"
 
+const maskImmutables = (hex, refs) => {
+  const b = ethers.getBytes(hex)
+  for (const list of Object.values(refs ?? {})) for (const r of list) b.fill(0, r.start, r.start + r.length)
+  return ethers.hexlify(b)
+}
+const TEMPLATES = Object.fromEntries(
+  ["fptp", "ranked"].filter((k) => CONTRACTS[k]?.deployedBytecode).map((k) => [k, maskImmutables(CONTRACTS[k].deployedBytecode, CONTRACTS[k].immutableReferences)])
+)
+const matchKind = (code) => {
+  for (const [k, t] of Object.entries(TEMPLATES)) {
+    if (code.length === t.length && maskImmutables(code, CONTRACTS[k].immutableReferences) === t) return k
+  }
+  return null
+}
+
 const ABI = [
   "function title() view returns (string)",
   "function MAX_CANDIDATES() view returns (uint256)",
@@ -30,6 +45,7 @@ const ABI = [
   "function registeredCount() view returns (uint256)",
   "function totalVotes() view returns (uint256)",
   "function scope() view returns (uint256)",
+  "function semaphore() view returns (address)",
   "function isWhitelisted(address) view returns (bool)",
   "function hasRegistered(address) view returns (bool)",
   "function nullifierUsed(uint256) view returns (bool)",
@@ -99,8 +115,14 @@ async function init() {
   }
   try {
     if (fromUrl) cfg.election = ethers.getAddress(fromUrl)
+    // Verify before rendering anything the contract returns (R3-6): its runtime code
+    // must match our build with immutables masked, as in the relayer's lookup_election,
+    // and it must use the configured Semaphore.
+    const kind = matchKind(await provider.getCode(cfg.election))
+    if (!kind) throw new Error("not a goblett election")
     const c = new ethers.Contract(cfg.election, ABI, provider)
-    cfg.kind = (await c.MAX_CANDIDATES()) === 32n ? "ranked" : "fptp"
+    if (ethers.getAddress(await c.semaphore()) !== ethers.getAddress(cfg.semaphore)) throw new Error("unknown Semaphore")
+    cfg.kind = kind
     election = c
   } catch (e) {
     $("title").textContent = `No goblett election at ${fromUrl ?? cfg.election} on chain ${cfg.chainId}. Create one below.`

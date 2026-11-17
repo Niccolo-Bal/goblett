@@ -34,7 +34,17 @@ def write_config(cfg: dict):
 
 
 def export_contracts():
-    out = {k: {"abi": artifact(n)["abi"], "bytecode": artifact(n)["bytecode"]["object"]} for k, n in KINDS.items()}
+    # deployedBytecode + immutableReferences let the site verify an ?election= contract
+    # the same way the relayer's lookup_election does (R3-6).
+    out = {
+        k: {
+            "abi": artifact(n)["abi"],
+            "bytecode": artifact(n)["bytecode"]["object"],
+            "deployedBytecode": artifact(n)["deployedBytecode"]["object"],
+            "immutableReferences": artifact(n)["deployedBytecode"].get("immutableReferences", {}),
+        }
+        for k, n in KINDS.items()
+    }
     SITE_CONTRACTS_PATH.write_text(json.dumps(out))
 
 
