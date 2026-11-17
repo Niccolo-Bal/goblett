@@ -12,9 +12,9 @@ Scope this round: `main` on Arc Testnet (chain 5042002) plus local copies. Any c
 | R3-2 | Duplicate whitelist entries can push `minAnonymitySet` past the distinct voters and brick voting (was R2-1) | Low | Fixed `1520e434` |
 | R3-3 | Unauthenticated Nostr reply text and revert reasons go into `innerHTML`, so anyone can run script on goblett.xyz and read every identity secret in localStorage (Scout) | Critical | Fixed `ac0a7904` + `68d41c27` (escaping, incl. `phase()` in the info panel found by Red; Red confirmed all three paths dead on `68d41c27`). Accepting replies only from known relayer pubkeys is still open |
 | R3-4 | A look-alike contract in `?election=` can return a real election's `scope()` and reorder `candidates()`, flipping a vote that then counts on the real election (Scout) | High | Fixed `ac0a7904` (site computes scope from chain ID and address and refuses a mismatch). Bytecode check added in R3-6 |
-| R3-6 | Site renders any `?election=` contract without checking it is genuine, so every field it returns is an injection or spoofing path (Scout, Red) | High | Fixed `13f5fb4f` |
-| R3-5 | One genuine, funded attacker election can starve the relayer's single queue for everyone else, and failed lookups aren't cached (Scout) | Medium | Confirmed by Red; fixed `2d4e6a6f` |
-| R3-7 | A whitelisted contract wallet can burn gas in `isValidSignature` up to the 1M refund cap, draining `relayFunds()` ~4.4x faster than honest registrations, so reimbursement-requiring relayers stop forwarding (Scout, Red PoC) | Medium | Fixed `d2232b3d` |
+| R3-6 | Site renders any `?election=` contract without checking it is genuine, so every field it returns is an injection or spoofing path (Scout, Red) | High | Fixed `13f5fb4f`, verified by Red |
+| R3-5 | One genuine, funded attacker election can starve the relayer's single queue for everyone else, and failed lookups aren't cached (Scout) | Medium | Fixed `2d4e6a6f`, verified by Red |
+| R3-7 | A whitelisted contract wallet can burn gas in `isValidSignature` up to the 1M refund cap, draining `relayFunds()` ~4.4x faster than honest registrations, so reimbursement-requiring relayers stop forwarding (Scout, Red PoC) | Medium | Fixed `d2232b3d`, verified by Red (grief drain 1.4x honest, was 4.4x) |
 | R1-1 | Anonymity set counts registrations, not honest voters | Info | Design note, still applies |
 
 **R3-1.** Found by Red. `common.py` now loads `relayer/.env` first (as its docstring and `.env.example` already said) and still reads `relayer.env` if present; both are gitignored.
