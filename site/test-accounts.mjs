@@ -20,11 +20,22 @@ globalThis.fetch = async (url, init = {}) => {
     for (const key of ["address", "username"]) if (u.searchParams.has(key)) return reply(200, pick(key, u.searchParams.get(key)))
     return reply(200, [...rows.values()])
   }
-  const row = JSON.parse(init.body)
-  const clash = [...rows.values()].find((r) => r.username === row.username && r.address !== row.address)
-  if (clash) return reply(409, { code: "23505" })
-  rows.set(row.address, row)
-  return reply(201, [row])
+  // PATCH applies its address/signed_at filters; POST is a plain insert. Unique username.
+  const body = JSON.parse(init.body)
+  const clash = (row) => [...rows.values()].some((r) => r.username === row.username && r.address !== row.address)
+  if (init.method === "PATCH") {
+    const addr = u.searchParams.get("address").replace(/^eq\./, "")
+    const lt = Number(u.searchParams.get("signed_at").replace(/^lt\./, ""))
+    const cur = rows.get(addr)
+    if (!cur || !(Number(cur.signed_at) < lt)) return reply(200, [])
+    const next = { ...cur, ...body }
+    if (clash(next)) return reply(409, { code: "23505" })
+    rows.set(addr, next)
+    return reply(200, [next])
+  }
+  if (rows.has(body.address) || clash(body)) return reply(409, { code: "23505" })
+  rows.set(body.address, body)
+  return reply(201, [body])
 }
 const env = { SUPABASE_URL: "http://db.test", SUPABASE_SECRET_KEY: "test" }
 
