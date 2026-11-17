@@ -4,6 +4,26 @@ Branch `Grok`, reset to `main` `9653e7b9` (the version goblett.xyz serves) on 20
 
 Scope this round: `main` on Arc Testnet (chain 5042002) plus local copies. Any contract may be tested. IP linking is out of scope (no OHTTP yet) but noted for later.
 
+## Round 4: OHTTP and accounts (2026-11-17, `main` `98268aa5`)
+
+Niccolo's "round 3". IDs start at R4 so they don't clash with the table below. IP linking is now in scope. Testing was on testnet and local copies only, with no mainnet transactions.
+
+| # | Title | Severity | Status |
+|---|-------|----------|--------|
+| R4-1 | `ohttp()` returns null on a 404, 5xx or HTML `/ohttp.json` (including the SPA fallback) and caches it, so publishing and private reads silently go direct over the real IP (Scout, Red PoC) | High | Fixed `653990b8` |
+| R4-2 | Every 10 s refresh sends `isWhitelisted(wallet)` and `hasRegistered(wallet)` to the RPC over the direct connection, tying the wallet to the IP (Scout, Red PoC) | Medium | Fixed `976fd8f0` |
+| R4-3 | Same-origin direct requests still leak: the `/api/account` lookup of the connected wallet, election reads in refresh (IP watches election E), and `generateProof` fetching snark artifacts from `snark-artifacts.pse.dev` right before a vote | Medium | Open |
+| R4-4 | `/api/account`: a concurrent race lets an older `signed_at` win, a freed username can be squatted at once (risky if whitelists use names), and GET enumerates 100 per call with no rate limit. Live table missing (502) (Red) | Low | Open |
+| R4-5 | The gateway is an open read proxy: any client can do `eth_call` and `eth_getCode` on any contract via `/rpc/5042002` (method allowlist exists) (Red) | Low | Open, needs gateway code |
+| R4-6 | If one party runs both the relay and the gateway (both behind Cloudflare under goblett.xyz), they see IP and plaintext together and OHTTP hides nothing from them. Timing still links a vote to the request that sent it | Design | Waiting on Niccolo: who runs each? |
+
+R3-5 and R3-7 retested on the relayer submodule (`70b25f6f`) and still hold (Red).
+
+### Round 4 commits
+
+- `653990b8` Built sites fail closed: if `/ohttp.json` is missing, not JSON or incomplete, `ohttp()` throws (not cached, so it retries) instead of returning null. Only the Vite dev server may run without it. Red's `test-ohttp-fallback.mjs` now throws on the 404 case instead of going direct (R4-1).
+- `976fd8f0` Wallet whitelist and registration status are read through `privateElection()`, once per wallet and again after registering, not on every refresh over the direct RPC. If the private channel is down, the register panel says so rather than guessing (R4-2).
+
 ## Round 3 (2026-11-16)
 
 | # | Title | Severity | Status |
