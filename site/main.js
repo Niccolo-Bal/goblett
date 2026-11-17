@@ -185,6 +185,24 @@ async function refresh() {
   }
 }
 
+// Reads that name the connected wallet go over the private channel, once per wallet,
+// not on every refresh over the direct RPC (R4-2). Cleared after registering.
+let walletCache // { account, whitelisted, registered } or a pending Promise of it
+function walletStatus(acc) {
+  if (walletCache?.account === acc) return walletCache.status
+  const status = privateElection()
+    .then(async (priv) => {
+      const [whitelisted, registered] = await Promise.all([priv.isWhitelisted(acc), priv.hasRegistered(acc)])
+      return { whitelisted, registered, walletErr: undefined }
+    })
+    .catch((e) => {
+      walletCache = undefined // retry next refresh
+      return { whitelisted: undefined, registered: undefined, walletErr: errMsg(e) }
+    })
+  walletCache = { account: acc, status }
+  return status
+}
+
 async function _refresh() {
   const [title, cands, phase, regEnd, vStart, vEnd, minAnon, regCount, total, tally, block, funds] = await Promise.all([
     election.title(),
@@ -204,9 +222,7 @@ async function _refresh() {
   // Fixed at deployment, so read once.
   const terms = state?.terms ?? { bounty: await election.relayBounty(), creator: await election.creator() }
   state = { title, cands, phase, regEnd, vStart, vEnd, minAnon, regCount, total, tally, funds, terms }
-  if (account) {
-    ;[state.whitelisted, state.registered] = await Promise.all([election.isWhitelisted(account), election.hasRegistered(account)])
-  }
+  if (account) Object.assign(state, await walletStatus(account))
   const t = (s) => new Date(Number(s) * 1000).toLocaleString()
 
   $("title").textContent = title
@@ -300,6 +316,7 @@ function renderRegister() {
   btn.disabled = true
   if (!account) return setStatus("regStatus", "Connect MetaMask to register.", "hint")
   if (state.phase !== "registration") return setStatus("regStatus", `Registration is closed (phase: ${state.phase}).`, "hint")
+  if (state.walletErr) return setStatus("regStatus", `Could not check this wallet over the private channel: ${state.walletErr}`, "err")
   if (!state.whitelisted) return setStatus("regStatus", `${account} is not on this election's whitelist.`, "err")
   if (state.registered) {
     const local = loadIdentities().some((x) => x.label === account.toLowerCase())
@@ -360,6 +377,7 @@ async function register() {
     const priv = await privateElection()
     const res = await confirm(cfg, sent.id, () => priv.hasRegistered(wallet))
     log(`registered on-chain${res.txHash ? `, tx ${res.txHash}` : ""}`)
+    walletCache = undefined
     await refresh()
   } catch (e) {
     console.error(e)
