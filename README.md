@@ -1,3 +1,7 @@
+<center>
+<img src="media/goblett_logo.png" alt="logo" width="150px">
+</center>
+
 <header>
   <h1 style="border-bottom: none;">Goblett: Seamless Private Voting</h1>
   <p class="subtitle">Made for UBC Hackathon 2026</p>
@@ -39,7 +43,7 @@ ballots without invalidating the proof. Additionally, anyone can set up a Goblet
 refund of gas paid plus a bounty from the contract (which is funded upon creation), so no relayer is trusted.
 
 <center>
-<img src="media/Goblett%20Diagram.png" alt="A sleeping orange cat">
+<img src="media/Goblett%20Diagram.png" alt="goblett architecture diagram">
 </center>
 
 During the registration phase of a Goblett election, users sign a nullifier and commitment hashed from their Semaphore secrete and send 

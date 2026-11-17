@@ -595,7 +595,7 @@ abstract contract ElectionTestBase is Test {
 
         uint256 credit = election.owed(dave);
         // bounty + gas * price, with gas somewhere between the overhead and the cap.
-        assertGt(credit, BOUNTY + election.REFUND_GAS_OVERHEAD() * GAS_PRICE);
+        assertGt(credit, BOUNTY + 21_000 * GAS_PRICE);
         assertLe(credit, BOUNTY + election.MAX_REFUND_GAS() * GAS_PRICE);
         assertEq(election.totalOwed(), credit);
         assertEq(election.relayFunds(), 1 ether - credit);
@@ -608,7 +608,7 @@ abstract contract ElectionTestBase is Test {
         _relayVote(GAS_PRICE);
 
         uint256 credit = election.owed(dave);
-        assertGt(credit, BOUNTY + election.REFUND_GAS_OVERHEAD() * GAS_PRICE);
+        assertGt(credit, BOUNTY + 21_000 * GAS_PRICE);
         assertLe(credit, BOUNTY + election.MAX_REFUND_GAS() * GAS_PRICE);
         assertEq(election.totalVotes(), 1);
     }
@@ -621,21 +621,70 @@ abstract contract ElectionTestBase is Test {
         assertEq(election.totalOwed(), 0);
     }
 
-    /// R3-7: a contract wallet burning gas in isValidSignature is refunded at most
-    /// MAX_REGISTER_REFUND_GAS, not MAX_REFUND_GAS.
-    function test_relay_registerForRefundCappedForGasBurningWallet() public {
+    /// R3-7: a contract wallet that burns gas in isValidSignature can't inflate the
+    /// relayer's refund by more than MAX_SIGNATURE_REFUND_GAS.
+    function test_relay_signatureGasRefundIsCappedForGasBurningWallet() public {
+        // What an honest first registration is credited, for comparison.
+        _fund(1 ether);
+        _relayRegistration(GAS_PRICE);
+        uint256 honest = election.owed(dave);
+
         GasBurningWallet burner = new GasBurningWallet();
         address[] memory w = _whitelist();
         w[0] = address(burner);
         Election e = _deploy(_candidates(3), w, regEnd, votingStart, votingEnd, 2);
+        vm.deal(address(this), 1 ether);
         (bool ok,) = address(e).call{value: 1 ether}("");
         assertTrue(ok);
+        address relayer2 = makeAddr("relayer2");
+        vm.txGasPrice(GAS_PRICE);
+        vm.prank(relayer2);
+        uint256 gasBefore = gasleft();
+        e.registerFor(address(burner), 77, "");
+        uint256 spent = gasBefore - gasleft();
+
+        assertTrue(e.hasRegistered(address(burner))); // expensive wallets still register
+        assertGt(spent, 2 * e.MAX_SIGNATURE_REFUND_GAS()); // it really did burn a lot
+        // ...but the relayer is credited an honest registration plus at most the allowance.
+        assertLe(e.owed(relayer2), honest + e.MAX_SIGNATURE_REFUND_GAS() * GAS_PRICE);
+        assertLt(e.owed(relayer2), BOUNTY + spent * GAS_PRICE);
+    }
+
+    /// Trailing junk in the calldata is ignored by the ABI decoder. Zero bytes cost a
+    /// relayer 4 gas each but are refunded at 16, so the refunded calldata is capped.
+    function test_relay_paddedCalldataEarnsAlmostNothing() public {
+        _fund(10 ether);
+        bytes memory honestCall = abi.encodeCall(Election.registerFor, (alice, 42, _sign(election, _key("alice"), alice, 42)));
+        bytes memory paddedCall = abi.encodePacked(
+            abi.encodeCall(Election.registerFor, (bob, 43, _sign(election, _key("bob"), bob, 43))), new bytes(50_000)
+        );
         vm.txGasPrice(GAS_PRICE);
         vm.prank(dave);
-        e.registerFor(address(burner), 77, "");
-        assertTrue(e.hasRegistered(address(burner)));
-        assertEq(e.owed(dave), BOUNTY + e.MAX_REGISTER_REFUND_GAS() * GAS_PRICE);
-        assertLt(e.MAX_REGISTER_REFUND_GAS(), e.MAX_REFUND_GAS());
+        (bool ok,) = address(election).call(honestCall);
+        assertTrue(ok);
+        uint256 honest = election.owed(dave);
+
+        address relayer2 = makeAddr("relayer2");
+        vm.prank(relayer2);
+        (ok,) = address(election).call(paddedCall);
+        assertTrue(ok);
+        // 50,000 extra bytes would be 800k gas of refund without the cap.
+        assertLt(election.owed(relayer2), honest + 60_000 * GAS_PRICE);
+    }
+
+    /// A relayer's first credit in an election writes two fresh storage slots; later
+    /// ones don't. The refund follows that, so neither case is over- or under-paid.
+    function test_relay_firstCreditIsLargerThanLaterOnes() public {
+        _fund(10 ether);
+        _openVoting();
+        _relayVote(GAS_PRICE); // candidate 0: fresh tally slot, fresh owed + totalOwed
+        uint256 first = election.owed(dave);
+        _relayVote(GAS_PRICE); // candidate 0 again
+        uint256 second = election.owed(dave) - first;
+        _relayVote(GAS_PRICE);
+        uint256 third = election.owed(dave) - first - second;
+        assertGt(first, second + 30_000 * GAS_PRICE); // two fresh slots (~34k) and more
+        assertApproxEqAbs(second, third, 3_000 * GAS_PRICE); // steady state
     }
 
     /// A relayer can't make the election pay for an inflated gas price.
@@ -920,7 +969,7 @@ abstract contract ElectionTestBase is Test {
         vm.prank(dave);
         election.registerForSignedOn(alice, 42, ETHEREUM, sig);
         assertGt(election.owed(dave), BOUNTY);
-        assertLe(election.owed(dave), BOUNTY + election.MAX_REGISTER_REFUND_GAS() * GAS_PRICE);
+        assertLe(election.owed(dave), BOUNTY + election.MAX_REFUND_GAS() * GAS_PRICE);
     }
 
     /// The test contract is the creator and receives reclaimed funds.

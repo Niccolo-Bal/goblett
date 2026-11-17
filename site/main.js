@@ -680,14 +680,17 @@ async function gasPriceNow() {
   const base = (await provider.getBlock("latest")).baseFeePerGas
   return base != null ? base + (f.maxPriorityFeePerGas ?? 0n) : (f.gasPrice ?? 0n)
 }
-// Per voter: one relayed registration (~200k gas) + one relayed vote (~400k), each with a bounty.
+// Per voter: one relayed registration and one relayed vote, each with a bounty. A registration
+// costs ~260k gas plus ~32k per level of the voters' Merkle tree (it gets deeper as the list
+// grows); a vote ~450k.
 function updateFundingEstimate(price) {
   const voters = Math.max(1, lines("newWhitelist").length)
   let bounty = 0n
   try {
     bounty = ethers.parseEther($("newBounty").value || "0")
   } catch {}
-  const estimate = BigInt(voters) * (600000n * price + 2n * bounty)
+  const levels = BigInt(Math.max(1, Math.ceil(Math.log2(voters))))
+  const estimate = BigInt(voters) * ((260000n + 32000n * levels + 450000n) * price + 2n * bounty)
   $("newFunding").value = ethers.formatEther(estimate)
   $("fundingHint").textContent = `Estimate for ${voters} voter(s) all registering and voting at today's gas price. Unused funding can be reclaimed to your wallet after voting ends.`
 }

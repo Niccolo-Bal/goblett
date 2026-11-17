@@ -218,8 +218,11 @@ Instant runoff (`RankedChoiceElection`):
 - **Relayer payment (in `Election.sol`):** the creator funds the contract in native USDC
   (constructor is payable; `receive()` accepts top-ups). `registerFor` and every `vote()`
   end with `_creditRelayer(gasStart)`, which credits `msg.sender` with
-  `min(gasUsed + REFUND_GAS_OVERHEAD, MAX_REFUND_GAS) * min(tx.gasprice, maxRefundGasPrice) + relayBounty`,
-  limited to what funding is left. Relayers collect with `withdraw()`; after `votingEnd`
+  `min(gasUsed, MAX_REFUND_GAS) * min(tx.gasprice, maxRefundGasPrice) + relayBounty`,
+  limited to what funding is left. `gasUsed` is the measured gas plus what a transaction
+  costs outside the measurement: 21000, calldata (16/byte, capped at 1600 bytes) and the
+  credit's own storage writes (22100 per slot that was zero, 5000 otherwise). e2e checks
+  the refund stays within 3% of the gas actually paid. Relayers collect with `withdraw()`; after `votingEnd`
   anyone can call `reclaim()`, which sends the unused funding to `creator`.
 - Invariants of the payment code (do not regress):
   - **Pull payment only.** No value moves inside `vote()`/`registerFor()`, so a relayer
@@ -228,7 +231,13 @@ Instant runoff (`RankedChoiceElection`):
     still succeeds.
   - **`msg.sender` decides who is paid, never whether a vote counts.**
   - **The gas price and the refunded gas are both capped**, or a relayer could inflate
-    refunds (absurd gas price; an ERC-1271 wallet that burns gas in `isValidSignature`).
+    refunds with an absurd gas price. For registrations, the signature check is refunded
+    only up to `MAX_SIGNATURE_REFUND_GAS` (100k): an ERC-1271 wallet could otherwise burn
+    gas in `isValidSignature` to drain the funding (audit R3-7). Do not cap the whole
+    registration instead: its cost grows ~32k gas per Merkle tree level (~500k at 500
+    voters), and a flat 300k cap made relayers lose money past about 20 voters.
+  - **Refunded calldata is capped**: trailing junk bytes are ignored by the ABI decoder
+    and zero bytes cost 4 gas but are refunded at 16.
   - `relayBounty` and `maxRefundGasPrice` are bounded to uint128 in the constructor so
     the credit arithmetic can't overflow and block voting.
   - `withdraw()`/`reclaim()` use checks-effects-interactions and a reentrancy lock.
