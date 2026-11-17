@@ -52,14 +52,13 @@ export async function confirm(cfg, id, onChain, timeoutMs = 90000) {
   try {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
-      if (await onChain()) return reply ?? { ok: true }
-      if (reply && !reply.ok) {
-        if (await onChain()) return { ok: true }
-        throw new Error(`relayer rejected it: ${String(reply.error).slice(0, 200)}`)
-      }
+      // Only the chain decides. Anyone can post a reply, so a reply's error is never
+      // treated as final (R3-8); it is shown below only as an unverified hint.
+      if (await onChain()) return { ok: true }
       await new Promise((r) => setTimeout(r, 1000))
     }
-    throw new Error("no relayer picked it up yet (is one running on this topic?). The message is stored on Nostr, so it can still go through later.")
+    const hint = reply && !reply.ok ? ` A relayer replied "${String(reply.error).slice(0, 200)}" (unverified: anyone can post replies).` : ""
+    throw new Error(`still pending, not on-chain yet. The message is stored on Nostr, so any relayer can still submit it later.${hint}`)
   } finally {
     sub.close()
   }
