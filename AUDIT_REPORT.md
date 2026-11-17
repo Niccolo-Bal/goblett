@@ -14,6 +14,7 @@ Scope this round: `main` on Arc Testnet (chain 5042002) plus local copies. Any c
 | R3-4 | A look-alike contract in `?election=` can return a real election's `scope()` and reorder `candidates()`, flipping a vote that then counts on the real election (Scout) | High | Fixed `ac0a7904` (site computes scope from chain ID and address and refuses a mismatch). Bytecode check added in R3-6 |
 | R3-6 | Site renders any `?election=` contract without checking it is genuine, so every field it returns is an injection or spoofing path (Scout, Red) | High | Fixed `13f5fb4f` |
 | R3-5 | One genuine, funded attacker election can starve the relayer's single queue for everyone else, and failed lookups aren't cached (Scout) | Medium | Confirmed by Red; fixed `2d4e6a6f` |
+| R3-7 | A whitelisted contract wallet can burn gas in `isValidSignature` up to the 1M refund cap, draining `relayFunds()` ~4.4x faster than honest registrations, so reimbursement-requiring relayers stop forwarding (Scout, Red PoC) | Medium | Fixed `d2232b3d` |
 | R1-1 | Anonymity set counts registrations, not honest voters | Info | Design note, still applies |
 
 **R3-1.** Found by Red. `common.py` now loads `relayer/.env` first (as its docstring and `.env.example` already said) and still reads `relayer.env` if present; both are gitignored.
@@ -31,3 +32,4 @@ Scope this round: `main` on Arc Testnet (chain 5042002) plus local copies. Any c
 - `819019e4` Escaped identity labels in the identity `<option>` list (same sink class as R3-3, found by Red; labels are local today).
 - Red, refund path: no profitable drain. `registerFor` is reimbursed slightly *less* than its cost, and ERC-1271 gas burn is capped by `MAX_REFUND_GAS` and paid by the sender.
 - `2d4e6a6f` Relayer queues requests per election and serves them round-robin (priority elections from `PRIORITY_ELECTIONS` plus the configured one get `PRIORITY_WEIGHT`=4 turns), caps each election at 200 pending, and caches failed lookups for 10 min (R3-5). Simulated 50 attacker events then 3 real ones: real served at positions 1, 3, 5 (was 50 to 52). Test: `relayer/test_fair_queue.py`.
+- `d2232b3d` New `MAX_REGISTER_REFUND_GAS` = 300k caps the refund for `registerFor` (honest is ~210k); votes keep the 1M cap. Expensive wallets still register, only the refund is capped. The relayer's reimbursement precheck mirrors it, and `contracts.json` is regenerated. New test with a gas-burning ERC-1271 wallet; Forge 169 passed, 0 failed (R3-7).
