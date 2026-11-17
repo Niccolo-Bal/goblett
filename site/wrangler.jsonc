@@ -1,0 +1,17 @@
+// How Cloudflare deploys the site: `npm run build`, then `npx wrangler deploy`.
+// Secrets are not here. Set them once on the Worker (dashboard -> goblett -> Settings ->
+// Variables and Secrets, or `npx wrangler secret put NAME`):
+//   SUPABASE_URL, SUPABASE_SECRET_KEY   (accounts; see .env.example)
+{
+  "name": "goblett",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-16",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // Unknown paths (/testnet, ?election=...) get index.html, as before.
+    "not_found_handling": "single-page-application",
+    // Only /api/* runs worker.js; everything else is served straight from dist/.
+    "run_worker_first": ["/api/*"]
+  }
+}
