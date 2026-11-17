@@ -4,57 +4,42 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Goblett</title>
-    <link rel="stylesheet" href="/style.css?v=36" />
+    <link rel="stylesheet" href="/style.css?v=40" />
   </head>
   <body class="home">
-    <div class="field" aria-hidden="true">
-      <div class="orb orb-a"></div>
-      <div class="orb orb-b"></div>
-      <div class="orb orb-c"></div>
-      <div class="grid"></div>
-    </div>
+    <div class="wash" aria-hidden="true"></div>
     <header>
       <h1><a href="/home.html">goblett<svg class="logo" width="16" height="22" viewBox="0 0 40 56" aria-hidden="true"><path fill="#1e3a8a" d="M20 20 C13 16 11 9 15 4 C17 1 20 0 20 0 C20 1 23 1 25 4 C29 9 27 16 20 20 Z"/><path fill="#2563eb" d="M20 19 C15 16 13 10 17 6 C18 4 20 2 20 2 C20 4 22 4 23 6 C27 10 25 16 20 19 Z"/><path fill="#dbeafe" d="M20 17 C18 15 17 11 18 8 C19 7 20 6 20 6 C20 7 21 7 22 8 C23 11 22 15 20 17 Z"/><path class="metal" d="M7 22 C8 33 13 39 18 41 H22 C27 39 32 33 33 22 C28 28 12 28 7 22 Z"/><ellipse class="shine" cx="20" cy="22" rx="14" ry="3"/><rect class="metal" x="18" y="40" width="4" height="10" rx="2"/><ellipse class="metal" cx="20" cy="51" rx="9" ry="2.4"/><ellipse fill="#2563eb" cx="20" cy="21.4" rx="8" ry="1.7"/></svg></a></h1>
+      <a class="begin" href="/get-started.html">Get started</a>
       <nav>
-        <a href="/how.html">How it works</a>
         <a href="/start.html">Start an election</a>
         <a href="/vote.html">Voting</a>
       </nav>
     </header>
 
     <main>
-      <section class="intro">
-        <h2>The vote is a proof.</h2>
-        <p>A wallet registers. The tally stays on the chain.</p>
-        <p class="scroll-cue">Scroll</p>
-        <div class="bg-chain" aria-hidden="true">
-          <div class="bg-chain-track">
-            <div class="bg-chain-set">
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-            </div>
-            <div class="bg-chain-set">
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-            </div>
-          </div>
-        </div>
+      <section class="lede">
+        <h2>Anonymous voting on chain</h2>
+        <p class="cycle">
+          <span>A wallet registers.</span>
+          <span>The tally stays on the chain.</span>
+          <span>Each identity votes once.</span>
+        </p>
       </section>
-      <section class="paths">
-        <a class="card path" href="/how.html"><h2>How it works</h2></a>
-        <a class="card path" href="/start.html">
-          <h2>Start an election</h2>
-          <p class="muted">Deploy one from your wallet. The rules are fixed after that.</p>
-        </a>
-        <a class="card path" href="/vote.html">
-          <h2>Voting</h2>
-          <p class="muted">Register, then cast a proof. Each identity votes once.</p>
-        </a>
-      </section>
+      <ul class="paths">
+        <li>
+          <a href="/start.html">
+            <strong>Start an election</strong>
+            <span>Deploy one from your wallet. The rules are fixed after that.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/vote.html">
+            <strong>Voting</strong>
+            <span>Register, then cast a proof. Each identity votes once.</span>
+          </a>
+        </li>
+      </ul>
     </main>
   </body>
 </html>

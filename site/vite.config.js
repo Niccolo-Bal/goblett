@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => ({
       input: {
         main: "index.html",
         home: "home.html",
-        how: "how.html",
+        getStarted: "get-started.html",
         start: "start.html",
         vote: "vote.html",
       },
