@@ -1,6 +1,6 @@
 
 <div align="center">
-<img src="media/goblett_logo.png" alt="logo" width="150px">
+<img src="media/goblett_logo.png" alt="logo" width="100px">
 </div>
 
 <header>
