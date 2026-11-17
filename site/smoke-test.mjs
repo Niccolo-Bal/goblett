@@ -29,6 +29,13 @@ const ABI = [
   "function relayFunds() view returns (uint256)",
 ]
 const cfg = JSON.parse(readFileSync(new URL("./public/election.json", import.meta.url)))
+// RPC_URL overrides the config's RPC (e.g. a local fork of a real chain). This test uses
+// anvil's public keys and moves the chain's clock, so it only ever runs against a local node.
+if (process.env.RPC_URL) cfg.rpcUrl = process.env.RPC_URL
+if (!/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(cfg.rpcUrl)) {
+  console.error(`refusing to run against ${cfg.rpcUrl}: set RPC_URL to a local anvil node or fork`)
+  process.exit(1)
+}
 const CONTRACTS = JSON.parse(readFileSync(new URL("./contracts.json", import.meta.url)))
 cfg.kind = process.argv[2] ?? "fptp"
 // Publish to the election's Nostr topic, then wait for the chain (or a relayer's error reply).

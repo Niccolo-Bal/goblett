@@ -79,6 +79,25 @@ out of funding, or its gas price cap below the current price); `REQUIRE_REIMBURS
 turns that off. After voting ends anyone can call `reclaim()` (button on the site) to
 send the unused funding back to the creator.
 
+## Arc mainnet (current deployment)
+
+Chain 5042, RPC `https://rpc.mainnet.arc.io`, explorer `https://explorer.arc.io`, gas in
+USDC. Semaphore is deployed at `0x21F9ee5fbA61be8755E49eE7Cb7F679077429482` (verifier
+`0xf511442a8BaF021c56EF37E02aa391077A333c61`); both were checked byte for byte against
+this repo's build. `relayer/election.json` and `site/public/election.json` point there.
+
+- Relayer: put `RPC_URL=https://rpc.mainnet.arc.io` and a funded `RELAYER_KEY` in
+  `relayer/.env`, then `python relayer.py`. It refuses relays an election won't pay back.
+- Site: commit `site/public/election.json` and `site/contracts.json`; the host builds
+  `site/` with `npm run build` and serves `dist/`.
+- To regenerate the config without redeploying anything:
+  `python setup_chain.py --rpc https://rpc.mainnet.arc.io --semaphore 0x21F9ee5fbA61be8755E49eE7Cb7F679077429482`
+- Rehearse changes on a fork first: `anvil --fork-url https://rpc.mainnet.arc.io --port 8546`,
+  a relayer with `RPC_URL=http://127.0.0.1:8546 ALLOW_DEV_KEYS=1`, and
+  `RPC_URL=http://127.0.0.1:8546 node smoke-test.mjs` in `site/`.
+- Real money: the relayer key holds real USDC in a plain file; keep its balance small and
+  withdraw (`withdraw.py`) regularly.
+
 ## Deploying on Arc testnet
 
 Arc testnet: chain 5042002, RPC `https://rpc.testnet.arc.io`, gas paid in USDC (18

@@ -43,6 +43,11 @@ _ANVIL_KEYS = {
 
 # What a wallet needs to know to add a chain (EIP-3085). Used by the site.
 CHAINS = {
+    5042: {
+        "chainName": "Arc",
+        "nativeCurrency": {"name": "USDC", "symbol": "USDC", "decimals": 18},
+        "explorerUrl": "https://explorer.arc.io",
+    },
     5042002: {
         "chainName": "Arc Testnet",
         "nativeCurrency": {"name": "USDC", "symbol": "USDC", "decimals": 18},

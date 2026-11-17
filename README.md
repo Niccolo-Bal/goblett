@@ -25,6 +25,8 @@ signatures and locally stored secretes, while maintaining minimal drawbacks (see
 
 `goblett-<chainId>-<election address>`
 
+Arc Semaphore address: [`0x21F9ee5fbA61be8755E49eE7Cb7F679077429482`](https://explorer.arc.io/address/0x21F9ee5fbA61be8755E49eE7Cb7F679077429482?tab=txs)
+
 ### Why not use wallets for semaphore secretes?
 
 ## Front-End Implementation

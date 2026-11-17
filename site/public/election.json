@@ -1,16 +1,16 @@
 {
-  "chainId": 5042002,
-  "rpcUrl": "https://rpc.testnet.arc.io",
-  "semaphore": "0x78e50FBA810bb1496c8C1c5209F491AB1Aa8a743",
+  "chainId": 5042,
+  "rpcUrl": "https://rpc.mainnet.arc.io",
+  "semaphore": "0x21F9ee5fbA61be8755E49eE7Cb7F679077429482",
   "nostrRelays": [
     "wss://nos.lol",
     "wss://relay.primal.net"
   ],
-  "chainName": "Arc Testnet",
+  "chainName": "Arc",
   "nativeCurrency": {
     "name": "USDC",
     "symbol": "USDC",
     "decimals": 18
   },
-  "explorerUrl": "https://testnet.arcscan.app"
+  "explorerUrl": "https://explorer.arc.io"
 }
