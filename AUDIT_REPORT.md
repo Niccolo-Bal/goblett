@@ -15,7 +15,7 @@ Niccolo's "round 3". IDs start at R4 so they don't clash with the table below. I
 | R4-3 | Same-origin direct requests still leak: the `/api/account` lookup of the connected wallet and election reads in refresh (IP watches election E) | Medium | Open |
 | R4-4 | `/api/account`: a concurrent race lets an older `signed_at` win, a freed username can be squatted at once (risky if whitelists use names), and GET enumerates 100 per call with no rate limit. Live table missing (502) (Red) | Low | Open |
 | R4-5 | The gateway is an open read proxy: any client can do `eth_call` and `eth_getCode` on any contract via `/rpc/5042002` (method allowlist exists) (Red) | Low | Open, needs gateway code |
-| R4-6 | If one party runs both the relay and the gateway (both behind Cloudflare under goblett.xyz), they see IP and plaintext together and OHTTP hides nothing from them. Timing still links a vote to the request that sent it | Design | Waiting on Niccolo: who runs each? |
+| R4-6 | If one party runs both the relay and the gateway (both behind Cloudflare under goblett.xyz), they see IP and plaintext together and OHTTP hides nothing from them. Timing still links a vote to the request that sent it | Design | Accepted for now: Niccolo runs both (noted in the README). Needs an independent relay operator before OHTTP protects against the operator |
 | R4-7 | `generateProof` downloads the depth-N circuit from `snark-artifacts.pse.dev` over a direct connection right before a vote, so that third party sees which IP is voting and when (Scout, Red) | High | Fixed `746c90ce`, verified by Red. If the browser cache is evicted, the vote-time fetch is still visible to the site host |
 
 R3-5 and R3-7 retested on the relayer submodule (`70b25f6f`) and still hold (Red).
@@ -30,7 +30,7 @@ R3-5 and R3-7 retested on the relayer submodule (`70b25f6f`) and still hold (Red
 
 | # | Title | Severity | Status |
 |---|-------|----------|--------|
-| R3-1 | `relayer/relayer.env` is committed with a funded `DEPLOYER_KEY` (`0x273d…383d`, about 39 USDC) | High | Untracked `1520e434`. **Key is still in git history: rotate it and move the funds.** |
+| R3-1 | `relayer/relayer.env` is committed with a funded `DEPLOYER_KEY` (`0x273d…383d`, about 39 USDC) | High | Untracked `1520e434`. Key is still in git history; Niccolo is burning it (2026-11-17). |
 | R3-2 | Duplicate whitelist entries can push `minAnonymitySet` past the distinct voters and brick voting (was R2-1) | Low | Fixed `1520e434` |
 | R3-3 | Unauthenticated Nostr reply text and revert reasons go into `innerHTML`, so anyone can run script on goblett.xyz and read every identity secret in localStorage (Scout) | Critical | Fixed `ac0a7904` + `68d41c27` (escaping, incl. `phase()` in the info panel found by Red; Red confirmed all three paths dead on `68d41c27`). |
 | R3-4 | A look-alike contract in `?election=` can return a real election's `scope()` and reorder `candidates()`, flipping a vote that then counts on the real election (Scout) | High | Fixed `ac0a7904` (site computes scope from chain ID and address and refuses a mismatch). Bytecode check added in R3-6 |
