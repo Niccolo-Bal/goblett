@@ -44,11 +44,13 @@ const ABI = [
 ]
 
 const $ = (id) => document.getElementById(id)
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const log = (msg) => {
   $("log").textContent = `${new Date().toLocaleTimeString()}  ${msg}\n` + $("log").textContent
 }
 const setStatus = (id, msg, cls = "") => {
-  $(id).innerHTML = msg ? `<p class="${cls}">${msg}</p>` : ""
+  // Escaped: messages can carry unauthenticated Nostr reply text or revert reasons (R3-3).
+  $(id).innerHTML = msg ? `<p class="${esc(cls)}">${esc(msg)}</p>` : ""
 }
 
 let cfg, provider, election, account, state
@@ -401,7 +403,10 @@ async function vote() {
 
     const ballot = selectedBallot()
     const message = cfg.kind === "ranked" ? pack(ballot) : BigInt(ballot)
-    const scope = await election.scope()
+    // Bind the proof to this address: a look-alike contract could otherwise return
+    // another election's scope and get a proof that counts there (R3-4).
+    const scope = BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["uint256", "address"], [cfg.chainId, cfg.election])))
+    if (scope !== (await election.scope())) throw new Error("This contract's scope does not match its address. It is not a genuine goblett election.")
     setStatus("voteStatus", `Generating zero-knowledge proof (${group.size} registered)… first time downloads the circuit, ~10-30 s`, "muted")
     const proof = await generateProof(identity, group, message, scope)
 
@@ -578,7 +583,7 @@ async function renderResults() {
       const w = (await election.winners()).map((i) => state.cands[Number(i)])
       html += `<p><b>${w.length > 1 ? "Tie: " : "Winner: "}${w.map(esc).join(", ")}</b></p>`
     } catch (e) {
-      html += `<p class="err">winners() failed: ${errMsg(e)}</p>`
+      html += `<p class="err">winners() failed: ${esc(errMsg(e))}</p>`
     }
   }
   $("tally").innerHTML = html
@@ -588,7 +593,6 @@ async function renderResults() {
 // Helpers + wiring
 // ---------------------------------------------------------------------------
 const short = (x) => String(x).slice(0, 10) + "…"
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 
 $("connect").onclick = () => connect().catch((e) => log(e.message))
 $("registerBtn").onclick = register

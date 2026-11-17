@@ -55,7 +55,7 @@ export async function confirm(cfg, id, onChain, timeoutMs = 90000) {
       if (await onChain()) return reply ?? { ok: true }
       if (reply && !reply.ok) {
         if (await onChain()) return { ok: true }
-        throw new Error(`relayer rejected it: ${reply.error}`)
+        throw new Error(`relayer rejected it: ${String(reply.error).slice(0, 200)}`)
       }
       await new Promise((r) => setTimeout(r, 1000))
     }
