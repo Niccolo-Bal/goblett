@@ -130,7 +130,7 @@ def handle_register(body: dict) -> dict:
     commitment = uint(body.get("identityCommitment"), "identityCommitment")
     election, _ = lookup_election(body.get("election"))
     fn = election.functions.registerFor(wallet, commitment, sig)
-    return submit(election, fn, f"registerFor {wallet}")
+    return submit(election, fn, f"registerFor {wallet}", max_refund_gas=300_000)
 
 
 def handle_vote(body: dict) -> dict:
@@ -157,15 +157,16 @@ def handle_vote(body: dict) -> dict:
     return submit(election, fn, f"vote nullifier {hex(proof[2])[:14]}...")
 
 
-def reimbursement_check(election):
+def reimbursement_check(election, max_refund_gas=1_000_000):
     """A precheck for send(): raise unless the election will pay back this relay.
-    Mirrors Election._creditRelayer: min(funds, (gas + overhead) * min(price, cap) + bounty)."""
+    Mirrors Election._creditRelayer: min(funds, min(gas + overhead, max_refund_gas) * min(price, cap) + bounty);
+    max_refund_gas is MAX_REGISTER_REFUND_GAS (300k) for registerFor, MAX_REFUND_GAS (1M) for votes."""
     f = election.functions
     bounty, cap, funds = f.relayBounty().call(), f.maxRefundGasPrice().call(), f.relayFunds().call()
 
     def check(gas: int, gas_price: int):
         cost = gas * gas_price
-        credit = min(funds, min(gas + 40_000, 1_000_000) * min(gas_price, cap) + bounty)
+        credit = min(funds, min(gas + 40_000, max_refund_gas) * min(gas_price, cap) + bounty)
         if credit < cost:
             why = "it has no relayer funding left" if funds < cost else f"its gas price cap ({cap / 1e9:g} gwei) is below the current price"
             raise BadRequest(f"this relayer would not be reimbursed: {why}")
@@ -173,10 +174,10 @@ def reimbursement_check(election):
     return check
 
 
-def submit(election, fn, label: str) -> dict:
+def submit(election, fn, label: str, max_refund_gas: int = 1_000_000) -> dict:
     with tx_lock:
         try:
-            precheck = reimbursement_check(election) if REQUIRE_REIMBURSEMENT else None
+            precheck = reimbursement_check(election, max_refund_gas) if REQUIRE_REIMBURSEMENT else None
             rcpt = send(w3, relayer, fn, gas_cap=MAX_GAS, precheck=precheck)
         except BadRequest:
             raise

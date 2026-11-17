@@ -109,6 +109,11 @@ abstract contract Election {
     /// @dev Upper bound on refunded gas per call. registerFor runs code of a contract
     ///      wallet (ERC-1271), which could burn gas on purpose to inflate a refund.
     uint256 public constant MAX_REFUND_GAS = 1_000_000;
+    /// @dev Tighter cap for registerFor: an honest registration is ~210k gas, so a
+    ///      contract wallet can't burn up to MAX_REFUND_GAS in isValidSignature and
+    ///      drain relayFunds() ~4x faster than honest use (R3-7). Wallets that need more
+    ///      still register; the relayer is just refunded at most this much.
+    uint256 public constant MAX_REGISTER_REFUND_GAS = 300_000;
 
     string public title;
     string[] internal _candidates;
@@ -222,7 +227,7 @@ abstract contract Election {
             revert InvalidSignature();
         }
         _register(wallet, identityCommitment);
-        _creditRelayer(gasStart);
+        _creditRelayer(gasStart, MAX_REGISTER_REFUND_GAS);
     }
 
     function _register(address wallet, uint256 identityCommitment) internal {
@@ -319,8 +324,8 @@ abstract contract Election {
     // funds (e.g. blocklisted on Arc) can't make a vote fail.
     //
     // What a credit can cost the election is bounded: one per whitelisted wallet
-    // (registerFor) plus one per registered voter (vote), each at most
-    // MAX_REFUND_GAS * maxRefundGasPrice + relayBounty. A voter may relay for themself
+    // (registerFor, at most MAX_REGISTER_REFUND_GAS * maxRefundGasPrice + relayBounty)
+    // plus one per registered voter (vote, at most MAX_REFUND_GAS * maxRefundGasPrice + relayBounty). A voter may relay for themself
     // and collect the credit; that is fine.
 
     /// @notice Anyone can add relayer funding at any time.
@@ -337,8 +342,12 @@ abstract contract Election {
     ///      funding the credit is smaller or zero, and the call still succeeds: voting
     ///      must never depend on the funding.
     function _creditRelayer(uint256 gasStart) internal {
+        _creditRelayer(gasStart, MAX_REFUND_GAS);
+    }
+
+    function _creditRelayer(uint256 gasStart, uint256 maxGas) internal {
         uint256 gasUsed = gasStart - gasleft() + REFUND_GAS_OVERHEAD;
-        if (gasUsed > MAX_REFUND_GAS) gasUsed = MAX_REFUND_GAS;
+        if (gasUsed > maxGas) gasUsed = maxGas;
         uint256 price = tx.gasprice < maxRefundGasPrice ? tx.gasprice : maxRefundGasPrice;
 
         uint256 amount = gasUsed * price + relayBounty;

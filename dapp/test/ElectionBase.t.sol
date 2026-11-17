@@ -621,6 +621,23 @@ abstract contract ElectionTestBase is Test {
         assertEq(election.totalOwed(), 0);
     }
 
+    /// R3-7: a contract wallet burning gas in isValidSignature is refunded at most
+    /// MAX_REGISTER_REFUND_GAS, not MAX_REFUND_GAS.
+    function test_relay_registerForRefundCappedForGasBurningWallet() public {
+        GasBurningWallet burner = new GasBurningWallet();
+        address[] memory w = _whitelist();
+        w[0] = address(burner);
+        Election e = _deploy(_candidates(3), w, regEnd, votingStart, votingEnd, 2);
+        (bool ok,) = address(e).call{value: 1 ether}("");
+        assertTrue(ok);
+        vm.txGasPrice(GAS_PRICE);
+        vm.prank(dave);
+        e.registerFor(address(burner), 77, "");
+        assertTrue(e.hasRegistered(address(burner)));
+        assertEq(e.owed(dave), BOUNTY + e.MAX_REGISTER_REFUND_GAS() * GAS_PRICE);
+        assertLt(e.MAX_REGISTER_REFUND_GAS(), e.MAX_REFUND_GAS());
+    }
+
     /// A relayer can't make the election pay for an inflated gas price.
     function test_relay_gasPriceIsCapped() public {
         _fund(100 ether);
@@ -800,5 +817,14 @@ contract ReentrantRelayer {
 
     receive() external payable {
         election.withdraw();
+    }
+}
+
+/// Accepts any signature after burning ~1.5M gas, like a griefing ERC-1271 wallet.
+contract GasBurningWallet {
+    function isValidSignature(bytes32, bytes calldata) external view returns (bytes4) {
+        uint256 x;
+        while (gasleft() > 1_000_000 && x < 60_000) x++;
+        return 0x1626ba7e;
     }
 }
