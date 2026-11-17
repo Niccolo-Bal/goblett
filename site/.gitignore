@@ -1,2 +1,7 @@
 node_modules/
 dist/
+# secrets (Supabase keys); the example file is safe to commit
+.env
+.env.*
+!.env.example
+.dev.vars

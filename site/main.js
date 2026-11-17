@@ -15,6 +15,7 @@ import { Group } from "@semaphore-protocol/group"
 import { generateProof } from "@semaphore-protocol/proof"
 
 import { publish, confirm } from "./nostr.js"
+import { usernamesOf, addressesOf, claimUsername, USERNAME_RE, USERNAME_RULES } from "./accounts.js"
 // ABI + creation bytecode of both election types, exported by relayer/setup_chain.py.
 import CONTRACTS from "./contracts.json"
 
@@ -215,10 +216,10 @@ async function connect() {
   log(`using wallet: ${mm ? mm.info.name : "window.ethereum"}${wallets.length > 1 ? ` (found ${wallets.map((w) => w.info.name).join(", ")})` : ""}`)
   const [acc] = await eth.request({ method: "eth_requestAccounts" })
   account = ethers.getAddress(acc)
-  $("account").textContent = account
+  loadAccount()
   eth.on?.("accountsChanged", (accs) => {
     account = accs[0] ? ethers.getAddress(accs[0]) : undefined
-    $("account").textContent = account ?? "not connected"
+    loadAccount()
     refresh()
   })
   await refresh()
@@ -462,6 +463,87 @@ async function vote() {
 }
 
 // ---------------------------------------------------------------------------
+// Accounts: a public username for the connected wallet (accounts.js). Optional, and
+// separate from voting: nothing here runs while a vote is cast.
+// ---------------------------------------------------------------------------
+let username // of the connected wallet, if it has one
+
+function renderAccount() {
+  $("account").textContent = !account ? "not connected" : username ? `${username} (${account.slice(0, 6)}…${account.slice(-4)})` : account
+  $("accountCard").hidden = !account
+}
+
+async function loadAccount() {
+  username = undefined
+  renderAccount()
+  if (!account) return
+  const wallet = account
+  try {
+    const name = (await usernamesOf([wallet])).get(wallet.toLowerCase())
+    if (wallet !== account) return // the wallet changed while we were asking
+    username = name
+    $("usernameInput").value = name ?? ""
+    setStatus("accountStatus", name ? `Your username is ${name}.` : "This wallet has no username yet.", name ? "ok" : "muted")
+  } catch (e) {
+    setStatus("accountStatus", `Accounts are unavailable right now: ${errMsg(e)}`, "muted")
+  }
+  renderAccount()
+}
+
+async function saveUsername() {
+  const wanted = $("usernameInput").value.trim().toLowerCase()
+  $("usernameBtn").disabled = true
+  try {
+    if (!account) throw new Error("connect MetaMask first")
+    if (!USERNAME_RE.test(wanted)) throw new Error(`a username is ${USERNAME_RULES}`)
+    setStatus("accountStatus", "Sign the username in MetaMask…", "muted")
+    const saved = await claimUsername(eth, account, wanted)
+    username = saved.username
+    setStatus("accountStatus", `✓ Your username is ${saved.username}.`, "ok")
+    renderAccount()
+  } catch (e) {
+    setStatus("accountStatus", `Could not save the username: ${errMsg(e)}`, "err")
+  } finally {
+    $("usernameBtn").disabled = false
+  }
+}
+
+// Whitelist entries are addresses or usernames (an optional leading @ is ignored).
+// Returns the distinct checksummed addresses and how each name was resolved.
+async function resolveWhitelist(entries) {
+  const names = []
+  for (const e of entries) {
+    if (ethers.isAddress(e)) continue
+    const name = e.replace(/^@/, "").toLowerCase()
+    if (!USERNAME_RE.test(name)) throw new Error(`"${e}" is neither an address nor a username`)
+    names.push(name)
+  }
+  const found = await addressesOf([...new Set(names)])
+  const unknown = [...new Set(names)].filter((n) => !found.has(n))
+  if (unknown.length) throw new Error(`no account with username: ${unknown.join(", ")}`)
+  const addresses = entries.map((e) => ethers.getAddress(ethers.isAddress(e) ? e : found.get(e.replace(/^@/, "").toLowerCase())))
+  return { addresses: [...new Set(addresses)], resolved: [...found].map(([name, address]) => ({ name, address: ethers.getAddress(address) })) }
+}
+
+// Show what the usernames in the whitelist box resolve to, so the creator can check the
+// addresses before they are fixed in the contract. (The database, not the chain, says who
+// "alice" is; the contract only ever stores addresses.)
+let previewTimer
+function previewWhitelist() {
+  clearTimeout(previewTimer)
+  previewTimer = setTimeout(async () => {
+    const entries = lines("newWhitelist")
+    if (entries.every((e) => ethers.isAddress(e))) return setStatus("whitelistPreview", "")
+    try {
+      const { resolved } = await resolveWhitelist(entries)
+      $("whitelistPreview").innerHTML = resolved.map((r) => `<div class="muted">${esc(r.name)} → ${esc(r.address)}</div>`).join("")
+    } catch (e) {
+      setStatus("whitelistPreview", errMsg(e), "err")
+    }
+  }, 500)
+}
+
+// ---------------------------------------------------------------------------
 // Create an election (deployed from the connected wallet, which pays the gas)
 // ---------------------------------------------------------------------------
 const recentKey = () => `goblett:elections:${cfg.chainId}`
@@ -546,11 +628,10 @@ async function createElection() {
     step = "connect wallet"
     if (!account) await connect()
     if (!account) throw new Error("connect MetaMask first")
+    step = "look up usernames"
     const entered = lines("newWhitelist")
-    const whitelist = [...new Set((entered.length ? entered : [account]).map((a) => {
-      if (!ethers.isAddress(a)) throw new Error(`not an address: ${a}`)
-      return ethers.getAddress(a)
-    }))]
+    const { addresses: whitelist, resolved } = await resolveWhitelist(entered.length ? entered : [account])
+    for (const r of resolved) log(`whitelist: ${r.name} → ${r.address}`)
     const minAnon = Number($("newMinAnon").value || Math.min(2, whitelist.length))
     if (!(minAnon >= 1 && minAnon <= whitelist.length)) throw new Error(`minimum registrations must be between 1 and ${whitelist.length} (the whitelist size)`)
 
@@ -631,6 +712,8 @@ $("registerBtn").onclick = register
 $("voteBtn").onclick = vote
 $("refresh").onclick = refresh
 $("createBtn").onclick = createElection
+$("usernameBtn").onclick = saveUsername
+$("newWhitelist").addEventListener("input", previewWhitelist)
 $("reclaimBtn").onclick = reclaim
 $("identitySel").onchange = () => {
   voteResultShown = false

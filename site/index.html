@@ -23,6 +23,17 @@
         <button id="reclaimBtn" class="secondary" hidden>Return unused relayer funding to the creator</button>
       </section>
 
+      <section id="accountCard" class="card" hidden>
+        <h2>Your account</h2>
+        <p class="muted">
+          An optional public username for this wallet, so people creating elections can add you by name.
+          It is stored with your wallet address and plays no part in voting.
+        </p>
+        <div id="accountStatus"></div>
+        <input id="usernameInput" placeholder="username" maxlength="20" autocomplete="off" />
+        <button id="usernameBtn" class="secondary">Save username</button>
+      </section>
+
       <section id="register" class="card needs-election">
         <h2>1. Register (linked to your wallet)</h2>
         <p class="muted">
@@ -76,9 +87,10 @@
           </select>
         </label>
         <label>Candidates, one per line <textarea id="newCands" rows="4" placeholder="Alice&#10;Bob&#10;Carol"></textarea></label>
-        <label>Voter wallets (whitelist), one address per line. Empty = just your wallet.
-          <textarea id="newWhitelist" rows="3" placeholder="0x…"></textarea>
+        <label>Voters (whitelist), one wallet address or username per line. Empty = just your wallet.
+          <textarea id="newWhitelist" rows="3" placeholder="0x… or a username"></textarea>
         </label>
+        <div id="whitelistPreview"></div>
         <label>Registration ends (voting opens at the same moment) <input id="newRegEnd" type="datetime-local" /></label>
         <label>Voting ends <input id="newVoteEnd" type="datetime-local" /></label>
         <label>Minimum registrations before voting can open
