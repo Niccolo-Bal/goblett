@@ -35,7 +35,12 @@ const ABI = [
   "function nullifierUsed(uint256) view returns (bool)",
   "function tally() view returns (uint256[])",
   "function winners() view returns (uint256[])",
-  "event Registered(address indexed wallet, uint256 identityCommitment)",
+  "function commitments() view returns (uint256[])",
+  "function relayBounty() view returns (uint256)",
+  "function maxRefundGasPrice() view returns (uint256)",
+  "function relayFunds() view returns (uint256)",
+  "function creator() view returns (address)",
+  "function reclaim()",
 ]
 
 const $ = (id) => document.getElementById(id)
@@ -47,6 +52,7 @@ const setStatus = (id, msg, cls = "") => {
 }
 
 let cfg, provider, election, account, state
+const REFRESH_MS = 10000 // each refresh is a dozen RPC calls; public RPCs rate-limit
 let ranking = [] // ranked elections: candidate indices in preference order
 
 // ---------------------------------------------------------------------------
@@ -84,7 +90,6 @@ async function init() {
   // Which election? ?election=0x... in the URL, else the config's default (if any).
   const q = new URLSearchParams(location.search)
   const fromUrl = q.get("election")
-  const defaultBlock = cfg.deployBlock
   if (!fromUrl && !cfg.election) {
     $("title").textContent = "No election selected. Create one below."
     $("createCard").open = true
@@ -94,7 +99,6 @@ async function init() {
     if (fromUrl) cfg.election = ethers.getAddress(fromUrl)
     const c = new ethers.Contract(cfg.election, ABI, provider)
     cfg.kind = (await c.MAX_CANDIDATES()) === 32n ? "ranked" : "fptp"
-    cfg.deployBlock = q.get("block") ? Number(q.get("block")) : fromUrl ? await findDeployBlock(cfg.election) : (defaultBlock ?? 0)
     election = c
   } catch (e) {
     $("title").textContent = `No goblett election at ${fromUrl ?? cfg.election} on chain ${cfg.chainId}. Create one below.`
@@ -103,20 +107,7 @@ async function init() {
   }
   document.body.classList.add("has-election")
   await refresh()
-  setInterval(refresh, 5000)
-}
-
-// First block at which the contract exists (needed as the start of the event query;
-// public RPCs reject log queries from block 0). Binary search on eth_getCode.
-async function findDeployBlock(addr) {
-  let lo = 0
-  let hi = await provider.getBlockNumber()
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1
-    if ((await provider.getCode(addr, mid)) !== "0x") hi = mid
-    else lo = mid + 1
-  }
-  return lo
+  setInterval(refresh, REFRESH_MS)
 }
 
 // Show chain errors (node down, no contract at the address) instead of failing silently.
@@ -132,7 +123,7 @@ async function refresh() {
 }
 
 async function _refresh() {
-  const [title, cands, phase, regEnd, vStart, vEnd, minAnon, regCount, total, tally, block] = await Promise.all([
+  const [title, cands, phase, regEnd, vStart, vEnd, minAnon, regCount, total, tally, block, funds] = await Promise.all([
     election.title(),
     election.candidates(),
     election.phase(),
@@ -144,9 +135,12 @@ async function _refresh() {
     election.totalVotes(),
     election.tally(),
     provider.getBlock("latest"),
+    election.relayFunds(),
   ])
   const firstLoad = !state
-  state = { title, cands, phase, regEnd, vStart, vEnd, minAnon, regCount, total, tally }
+  // Fixed at deployment, so read once.
+  const terms = state?.terms ?? { bounty: await election.relayBounty(), creator: await election.creator() }
+  state = { title, cands, phase, regEnd, vStart, vEnd, minAnon, regCount, total, tally, funds, terms }
   if (account) {
     ;[state.whitelisted, state.registered] = await Promise.all([election.isWhitelisted(account), election.hasRegistered(account)])
   }
@@ -160,7 +154,9 @@ async function _refresh() {
     <dt>Registration until</dt><dd>${t(regEnd)}</dd>
     <dt>Voting</dt><dd>${t(vStart)} → ${t(vEnd)}</dd>
     <dt>Registered</dt><dd>${regCount} (voting needs ≥ ${minAnon})</dd>
-    <dt>Election</dt><dd>${cfg.election} (chain ${cfg.chainId})</dd>`
+    <dt>Relayer funding</dt><dd>${fmt(funds)} left (bounty ${fmt(terms.bounty)} per registration/vote, plus gas)${funds === 0n ? ' <span class="err">— relayers may refuse to forward</span>' : ""}</dd>
+    <dt>Election</dt><dd>${cfg.explorerUrl ? `<a href="${cfg.explorerUrl}/address/${cfg.election}" target="_blank" rel="noopener">${cfg.election}</a>` : cfg.election} (${esc(cfg.chainName ?? "chain " + cfg.chainId)})</dd>`
+  $("reclaimBtn").hidden = !(phase === "ended" && funds > 0n)
 
   renderRegister()
   renderIdentities()
@@ -220,7 +216,13 @@ async function ensureChain() {
     if (code !== 4902 && code !== -32603) throw e
     await eth.request({
       method: "wallet_addEthereumChain",
-      params: [{ chainId: hex, chainName: `goblett test chain ${cfg.chainId}`, rpcUrls: [cfg.rpcUrl], nativeCurrency: { name: "Test", symbol: "TEST", decimals: 18 } }],
+      params: [{
+        chainId: hex,
+        chainName: cfg.chainName ?? `chain ${cfg.chainId}`,
+        rpcUrls: [cfg.rpcUrl],
+        nativeCurrency: cfg.nativeCurrency ?? { name: "Native", symbol: "NATIVE", decimals: 18 },
+        ...(cfg.explorerUrl ? { blockExplorerUrls: [cfg.explorerUrl] } : {}),
+      }],
     })
   }
   const now = await active()
@@ -393,8 +395,8 @@ async function vote() {
     }
     voteResultShown = true
     setStatus("voteStatus", "Rebuilding the voter group from on-chain registrations…", "muted")
-    const events = await election.queryFilter(election.filters.Registered(), cfg.deployBlock)
-    const group = new Group(events.map((e) => e.args.identityCommitment))
+    // One call for the whole list (no event scan: Arc's RPC only serves small log ranges).
+    const group = new Group([...(await election.commitments())])
     if (group.indexOf(identity.commitment) < 0) throw new Error("this identity is not registered in this election")
 
     const ballot = selectedBallot()
@@ -427,7 +429,7 @@ async function vote() {
 // Create an election (deployed from the connected wallet, which pays the gas)
 // ---------------------------------------------------------------------------
 const recentKey = () => `goblett:elections:${cfg.chainId}`
-const electionUrl = (e) => `?election=${e.address}&block=${e.block}`
+const electionUrl = (e) => `?election=${e.address}`
 const lines = (id) => $(id).value.split("\n").map((x) => x.trim()).filter(Boolean)
 // <input type="datetime-local"> works in local time without a zone: "2026-11-16T21:05".
 const toLocalInput = (unix) => {
@@ -446,7 +448,49 @@ async function initCreateForm() {
   const now = await chainNow()
   $("newRegEnd").value = toLocalInput(now + 15 * 60)
   $("newVoteEnd").value = toLocalInput(now + 45 * 60)
+  // Relayer payment defaults: refund gas up to twice today's price.
+  const price = await gasPriceNow()
+  $("newMaxGasPrice").value = Math.ceil(Number(ethers.formatUnits(2n * price, "gwei")))
+  for (const el of document.querySelectorAll(".sym")) el.textContent = sym()
+  for (const id of ["newWhitelist", "newBounty", "newMaxGasPrice"]) $(id).addEventListener("input", () => updateFundingEstimate(price))
+  updateFundingEstimate(price)
   $("chainClock").textContent = `Chain time is now ${new Date(now * 1000).toLocaleString()}. Deadlines are checked against the chain's clock, which on a local test chain can differ from yours.`
+}
+
+const sym = () => cfg.nativeCurrency?.symbol ?? ""
+const fmt = (wei) => `${Number(ethers.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${sym()}`
+// What a transaction pays per gas right now (base fee + tip).
+async function gasPriceNow() {
+  const f = await provider.getFeeData()
+  const base = (await provider.getBlock("latest")).baseFeePerGas
+  return base != null ? base + (f.maxPriorityFeePerGas ?? 0n) : (f.gasPrice ?? 0n)
+}
+// Per voter: one relayed registration (~200k gas) + one relayed vote (~400k), each with a bounty.
+function updateFundingEstimate(price) {
+  const voters = Math.max(1, lines("newWhitelist").length)
+  let bounty = 0n
+  try {
+    bounty = ethers.parseEther($("newBounty").value || "0")
+  } catch {}
+  const estimate = BigInt(voters) * (600000n * price + 2n * bounty)
+  $("newFunding").value = ethers.formatEther(estimate)
+  $("fundingHint").textContent = `Estimate for ${voters} voter(s) all registering and voting at today's gas price. Unused funding can be reclaimed to your wallet after voting ends.`
+}
+
+// After voting ends, anyone can send the unused relayer funding back to the creator.
+async function reclaim() {
+  try {
+    if (!account) await connect()
+    await ensureChain()
+    await ensureAccountAuthorized()
+    const signer = await new ethers.BrowserProvider(eth).getSigner(account)
+    const tx = await new ethers.Contract(cfg.election, ABI, signer).reclaim()
+    log(`reclaim sent (tx ${short(tx.hash)}); the funds go to the creator ${state.terms.creator}`)
+    await provider.waitForTransaction(tx.hash, 1, 120000)
+    await refresh()
+  } catch (e) {
+    log(`reclaim failed: ${errMsg(e)}`)
+  }
 }
 
 async function createElection() {
@@ -479,11 +523,16 @@ async function createElection() {
     if (!(regEnd > now + 30)) throw new Error("registration must end in the future (by the chain's clock)")
     if (!(voteEnd > regEnd)) throw new Error("voting must end after registration ends")
 
+    const bounty = ethers.parseEther($("newBounty").value || "0")
+    const maxGasPrice = ethers.parseUnits($("newMaxGasPrice").value || "0", "gwei")
+    const funding = ethers.parseEther($("newFunding").value || "0")
+
     step = "switch network"
     await ensureChain()
     await ensureAccountAuthorized()
-    if ((await provider.getBalance(account)) === 0n) {
-      throw new Error(`${account} has no funds on chain ${cfg.chainId} to pay for the deployment. On the local test chain run: python setup_chain.py --fund ${account}`)
+    const balance = await provider.getBalance(account)
+    if (balance <= funding) {
+      throw new Error(`${account} has ${fmt(balance)}, not enough for ${fmt(funding)} of relayer funding plus the deployment gas.${cfg.chainId === 31337 ? ` On the local test chain run: python setup_chain.py --fund ${account}` : ""}`)
     }
 
     step = "confirm the deployment in MetaMask"
@@ -491,7 +540,8 @@ async function createElection() {
     const signer = await new ethers.BrowserProvider(eth).getSigner(account)
     const factory = new ethers.ContractFactory(CONTRACTS[kind].abi, CONTRACTS[kind].bytecode, signer)
     // Voting opens when registration ends (votingStart = registrationEnd, no gap).
-    const deployTx = await factory.getDeployTransaction(cfg.semaphore, title, cands, whitelist, regEnd, regEnd, voteEnd, minAnon)
+    // The funding is sent along with the deployment and held by the election contract.
+    const deployTx = await factory.getDeployTransaction(cfg.semaphore, title, cands, whitelist, regEnd, regEnd, voteEnd, minAnon, bounty, maxGasPrice, { value: funding })
     const tx = await signer.sendTransaction(deployTx)
 
     step = "wait for the deployment to be mined"
@@ -499,7 +549,7 @@ async function createElection() {
     const rcpt = await provider.waitForTransaction(tx.hash, 1, 120000)
     if (!rcpt || rcpt.status !== 1) throw new Error("the deployment transaction failed")
 
-    const entry = { address: rcpt.contractAddress, block: rcpt.blockNumber, title }
+    const entry = { address: rcpt.contractAddress, title }
     const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]")
     localStorage.setItem(recentKey(), JSON.stringify([entry, ...recent].slice(0, 20)))
     setStatus("createStatus", `✓ Deployed at ${entry.address}. Opening it…`, "ok")
@@ -545,6 +595,7 @@ $("registerBtn").onclick = register
 $("voteBtn").onclick = vote
 $("refresh").onclick = refresh
 $("createBtn").onclick = createElection
+$("reclaimBtn").onclick = reclaim
 $("identitySel").onchange = () => {
   voteResultShown = false
   updateVoteButton()

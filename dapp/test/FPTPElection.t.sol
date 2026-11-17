@@ -17,7 +17,13 @@ contract FPTPElectionTest is ElectionTestBase {
         uint256 ve,
         uint256 minAnon
     ) internal override returns (Election) {
-        return new FPTPElection(s, "Test election", c, w, r, vs, ve, minAnon);
+        return new FPTPElection(s, "Test election", c, w, r, vs, ve, minAnon, BOUNTY, MAX_GAS_PRICE);
+    }
+
+    function _deployWithTerms(uint256 bounty, uint256 maxGasPrice) internal override returns (Election) {
+        return new FPTPElection(
+            ISemaphore(address(mock)), "Test election", _candidates(3), _whitelist(), regEnd, votingStart, votingEnd, 2, bounty, maxGasPrice
+        );
     }
 
     function _maxCandidates() internal pure override returns (uint256) {
@@ -29,7 +35,7 @@ contract FPTPElectionTest is ElectionTestBase {
     }
 
     function _submit(ISemaphore.SemaphoreProof memory p, uint256) internal override {
-        FPTPElection(address(election)).vote(p);
+        FPTPElection(payable(address(election))).vote(p);
     }
 
     function _cast(uint256 candidate, uint256 times) internal {

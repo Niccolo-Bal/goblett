@@ -18,7 +18,13 @@ contract RankedChoiceElectionTest is ElectionTestBase {
         uint256 ve,
         uint256 minAnon
     ) internal override returns (Election) {
-        return new RankedChoiceElection(s, "Test election", c, w, r, vs, ve, minAnon);
+        return new RankedChoiceElection(s, "Test election", c, w, r, vs, ve, minAnon, BOUNTY, MAX_GAS_PRICE);
+    }
+
+    function _deployWithTerms(uint256 bounty, uint256 maxGasPrice) internal override returns (Election) {
+        return new RankedChoiceElection(
+            ISemaphore(address(mock)), "Test election", _candidates(3), _whitelist(), regEnd, votingStart, votingEnd, 2, bounty, maxGasPrice
+        );
     }
 
     function _maxCandidates() internal pure override returns (uint256) {
@@ -34,7 +40,7 @@ contract RankedChoiceElectionTest is ElectionTestBase {
     }
 
     function rcv() internal view returns (RankedChoiceElection) {
-        return RankedChoiceElection(address(election));
+        return RankedChoiceElection(payable(address(election)));
     }
 
     /// Packing computed independently of the contract.

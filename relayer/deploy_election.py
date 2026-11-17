@@ -10,25 +10,15 @@ Semaphore: reused from election.json if it still has code on this chain, or take
 """
 
 import argparse
-import json
-import time
 
-from eth_account import Account
 from web3 import Web3
 
-from nostr import DEFAULT_RELAYS
-from common import CONFIG_PATH, SITE_CONFIG_PATH, DEPLOYER_KEY, KINDS, RPC_URL, artifact, connect
+from common import KINDS, RPC_URL, account, artifact, connect, expected_gas_price, send
 
 
-def deploy(w3, acct, art, *args, bytecode=None):
+def deploy(w3, acct, art, *args, bytecode=None, value=0):
     c = w3.eth.contract(abi=art["abi"], bytecode=bytecode or art["bytecode"]["object"])
-    fn = c.constructor(*args)
-    tx = fn.build_transaction(
-        {"from": acct.address, "nonce": w3.eth.get_transaction_count(acct.address, "pending")}
-    )
-    rcpt = w3.eth.wait_for_transaction_receipt(
-        w3.eth.send_raw_transaction(acct.sign_transaction(tx).raw_transaction), timeout=120
-    )
+    rcpt = send(w3, acct, c.constructor(*args), value=value)
     if rcpt.status != 1:
         raise SystemExit(f"deploy failed: {rcpt.transactionHash.hex()}")
     return rcpt
@@ -65,6 +55,9 @@ def main():
     p.add_argument("--gap", type=float, default=0, help="freeze between registration and voting, minutes")
     p.add_argument("--vote", type=float, default=30, help="voting window, minutes")
     p.add_argument("--min-anon", type=int, default=None, help="min registrations before voting (default: min(2, whitelist))")
+    p.add_argument("--bounty", type=float, default=0.0005, help="paid to the relayer per registration/vote, in the native token")
+    p.add_argument("--max-gas-price", type=float, default=None, help="cap on refunded gas price, gwei (default: 2x the current price)")
+    p.add_argument("--fund", type=float, default=None, help="relayer funding sent with the deployment, native token (default: an estimate for a full turnout)")
     p.add_argument("--semaphore", help="existing Semaphore address")
     p.add_argument("--rpc", default=RPC_URL)
     p.add_argument("--nostr-relays", nargs="+", help="Nostr relays carrying registrations/votes")
@@ -72,8 +65,7 @@ def main():
     a = p.parse_args()
 
     w3 = connect(a.rpc)
-    acct = Account.from_key(DEPLOYER_KEY)
-    chain_id = w3.eth.chain_id
+    acct = account(w3, "DEPLOYER_KEY")
 
     from setup_chain import ensure_chain, export_contracts, write_config
 
@@ -90,17 +82,26 @@ def main():
     vote_end = vote_start + int(a.vote * 60)
 
     name = KINDS[a.kind]
+    bounty = w3.to_wei(a.bounty, "ether")
+    price = expected_gas_price(w3)
+    max_gas_price = w3.to_wei(a.max_gas_price, "gwei") if a.max_gas_price is not None else 2 * price
+    # Per voter: one relayed registration (~200k gas) + one relayed vote (~400k), each with a bounty.
+    estimate = len(whitelist) * (600_000 * price + 2 * bounty)
+    funding = w3.to_wei(a.fund, "ether") if a.fund is not None else estimate
     rcpt = deploy(
-        w3, acct, artifact(name), sem, a.title, a.candidates, whitelist, reg_end, vote_start, vote_end, min_anon
+        w3, acct, artifact(name), sem, a.title, a.candidates, whitelist, reg_end, vote_start, vote_end, min_anon,
+        bounty, max_gas_price, value=funding,
     )
     # Becomes the site's default election (the one shown without ?election= in the URL).
-    cfg.update({"election": rcpt.contractAddress, "deployBlock": rcpt.blockNumber})
+    cfg["election"] = rcpt.contractAddress
     write_config(cfg)
     export_contracts()
     print(f"{name} '{a.title}' at {rcpt.contractAddress} (block {rcpt.blockNumber})")
     print(f"  candidates {a.candidates}, whitelist {len(whitelist)}, minAnonymitySet {min_anon}")
+    print(f"  relayer bounty {a.bounty}, refunds up to {max_gas_price / 1e9:g} gwei, funded with {funding / 1e18:g}"
+          f" (estimate for full turnout: {estimate / 1e18:g})")
     print(f"  registration until +{a.reg}m, voting +{a.reg + a.gap}m .. +{a.reg + a.gap + a.vote}m (chain time)")
-    print(f"open http://localhost:5173/?election={rcpt.contractAddress}&block={rcpt.blockNumber}")
+    print(f"open http://localhost:5173/?election={rcpt.contractAddress}")
 
 
 if __name__ == "__main__":

@@ -33,10 +33,22 @@ contract RankedChoiceElection is Election {
         uint256 registrationEnd_,
         uint256 votingStart_,
         uint256 votingEnd_,
-        uint256 minAnonymitySet_
+        uint256 minAnonymitySet_,
+        uint256 relayBounty_,
+        uint256 maxRefundGasPrice_
     )
+        payable
         Election(
-            semaphore_, title_, candidates_, whitelist_, registrationEnd_, votingStart_, votingEnd_, minAnonymitySet_
+            semaphore_,
+            title_,
+            candidates_,
+            whitelist_,
+            registrationEnd_,
+            votingStart_,
+            votingEnd_,
+            minAnonymitySet_,
+            relayBounty_,
+            maxRefundGasPrice_
         )
     {}
 
@@ -44,6 +56,7 @@ contract RankedChoiceElection is Election {
     ///        and whose `scope` is this election's scope.
     /// @param ranking Candidate indices, most preferred first.
     function vote(ISemaphore.SemaphoreProof calldata proof, uint256[] calldata ranking) external {
+        uint256 gasStart = gasleft();
         // The ranking is only trusted because it equals the proven message.
         uint256 packed = packRanking(ranking);
         if (proof.message != packed) revert BallotMismatch();
@@ -61,6 +74,7 @@ contract RankedChoiceElection is Election {
         }
 
         emit VoteCast(proof.nullifier, ranking);
+        _creditRelayer(gasStart);
     }
 
     /// @notice Canonical uint256 encoding of a ranking, used as the proof's message.

@@ -24,7 +24,9 @@ const ABI = [
   "function scope() view returns (uint256)",
   "function tally() view returns (uint256[])",
   "function nullifierUsed(uint256) view returns (bool)",
-  "event Registered(address indexed wallet, uint256 identityCommitment)",
+  "function commitments() view returns (uint256[])",
+  "function owed(address) view returns (uint256)",
+  "function relayFunds() view returns (uint256)",
 ]
 const cfg = JSON.parse(readFileSync(new URL("./public/election.json", import.meta.url)))
 const CONTRACTS = JSON.parse(readFileSync(new URL("./contracts.json", import.meta.url)))
@@ -36,15 +38,18 @@ const post = async (body, onChain) => {
 }
 const provider = new ethers.JsonRpcProvider(cfg.rpcUrl, undefined, { cacheTimeout: -1 })
 const never = async () => false
+// Relayer payment terms, as the form would set them.
+const BOUNTY = ethers.parseEther("0.0005")
+const MAX_GAS_PRICE = ethers.parseUnits("100", "gwei")
+const FUNDING = ethers.parseEther(process.env.FUNDING ?? "0.1")
 
 // Deploy like the site does: contracts.json bytecode, votingStart = registrationEnd.
 const deployer = new ethers.Wallet("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", provider) // anvil #0
 const now = Math.max((await provider.getBlock("pending")).timestamp, (await provider.getBlock("latest")).timestamp)
 const factory = new ethers.ContractFactory(CONTRACTS[cfg.kind].abi, CONTRACTS[cfg.kind].bytecode, deployer)
-const deployTx = await factory.getDeployTransaction(cfg.semaphore, "Smoke test", ["Alice", "Bob", "Carol"], KEYS.map((k) => new ethers.Wallet(k).address), now + 600, now + 600, now + 2400, 2)
+const deployTx = await factory.getDeployTransaction(cfg.semaphore, "Smoke test", ["Alice", "Bob", "Carol"], KEYS.map((k) => new ethers.Wallet(k).address), now + 600, now + 600, now + 2400, 2, BOUNTY, MAX_GAS_PRICE, { value: FUNDING })
 const rcpt = await (await deployer.sendTransaction(deployTx)).wait()
 cfg.election = rcpt.contractAddress
-cfg.deployBlock = rcpt.blockNumber
 const election = new ethers.Contract(cfg.election, ABI, provider)
 console.log(`election ${cfg.election} (${cfg.kind}), phase ${await election.phase()}`)
 
@@ -64,8 +69,7 @@ await provider.send("evm_setNextBlockTimestamp", [Number(await election.votingSt
 await provider.send("evm_mine", [])
 console.log("phase", await election.phase())
 
-const events = await election.queryFilter(election.filters.Registered(), cfg.deployBlock)
-const group = new Group(events.map((e) => e.args.identityCommitment))
+const group = new Group([...(await election.commitments())])
 const scope = await election.scope()
 const ballots = cfg.kind === "ranked" ? [[1, 0], [1]] : [1, 2]
 const pack = (r) => r.reduce((acc, c, i) => acc | (BigInt(c + 1) << BigInt(8 * i)), 0n)
@@ -80,5 +84,7 @@ for (let i = 0; i < ids.length; i++) {
 console.log("replay ->", await post(last, never))
 console.log("not an election ->", await publish({ ...cfg, election: cfg.semaphore }, last).then((s) => confirm(cfg, s.id, never, 40000)).catch((e) => e.message))
 console.log("garbage ->", await post({ type: "vote", proof: { points: [1] } }, never))
+const RELAYER = process.env.RELAYER_ADDRESS ?? "0xa0Ee7A142d267C1f36714E4a8F75612F20a79720" // anvil #9
+console.log("relayer is owed", ethers.formatEther(await election.owed(RELAYER)), "| funding left", ethers.formatEther(await election.relayFunds()))
 console.log("tally", (await election.tally()).map(Number))
 process.exit(0)

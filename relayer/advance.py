@@ -6,9 +6,10 @@
     python advance.py voting 0xElection   # a specific election (default: the one in election.json)
 """
 
+import os
 import sys
 
-from common import artifact, connect, load_config
+from common import LOCAL_CHAIN_ID, artifact, connect, load_config
 
 
 def main():
@@ -16,6 +17,8 @@ def main():
         raise SystemExit(__doc__)
     cfg = load_config()
     w3 = connect()
+    if w3.eth.chain_id != LOCAL_CHAIN_ID and os.environ.get("ALLOW_DEV_KEYS") != "1":
+        raise SystemExit("advance.py only works on a local anvil chain; a real chain's clock can't be moved")
     addr = w3.to_checksum_address(sys.argv[2] if len(sys.argv) == 3 else cfg["election"])
     el = w3.eth.contract(address=addr, abi=artifact("Election")["abi"])
     now = w3.eth.get_block("latest").timestamp

@@ -4,7 +4,7 @@ Hackathon project for UBC 2026 (University Blockchain Conference). A DApp on Arc
 (Circle's L1, USDC as gas; testnet chain ID 5042002)
 for elections with a **public whitelist of wallets** where **no one, including the
 deployer, can link a wallet to its ballot**. Built on Semaphore v4. A web front-end
-lives in `../site` (empty so far).
+lives in `../site`, and the relayer in `../relayer`.
 
 ## Working with the user
 
@@ -65,6 +65,14 @@ constructor arguments for both).
   types on one Semaphore: front-run, replay, tampering, wrong scope, cross-election
   proof, double vote, runoff, tally)
 - `../../toy_proj/`: the user's Python toy model of the scheme (sha256, no SNARK)
+- `../relayer/` (Python, web3.py): `relayer.py` (Nostr -> chain), `setup_chain.py`
+  (Semaphore + config + exports `site/contracts.json`), `deploy_election.py`,
+  `withdraw.py`, `advance.py` (anvil only). `README.md` there has the run and Arc steps.
+- `../site/` (Vite, ethers, Semaphore JS, nostr-tools): create an election with
+  MetaMask, register, vote, results. `smoke-test.mjs` runs the flow headlessly.
+- After changing a contract: `forge build`, then `relayer/setup_chain.py` (re-exports the
+  bytecode for the site), then restart the relayer. The relayer only serves elections
+  whose code matches the current build.
 
 ## The scheme
 
@@ -75,7 +83,9 @@ constructor arguments for both).
    identityCommitment)` (domain: name "goblett Election", version "1", chainId,
    election address) and anyone relays it via `registerFor(wallet, C, sig)`.
    EOA (low-s ECDSA) and ERC-1271 wallets are supported. `C` becomes a leaf of
-   the election's Semaphore Merkle tree.
+   the election's Semaphore Merkle tree. It is also appended to
+   `commitments()` (the full list in tree order, so a voter can rebuild the group with
+   one call; Arc's RPC only serves logs for small block ranges).
 3. **Freeze:** registration closes before voting opens, so the root is final and
    registration timing can't be correlated with votes.
 4. **Voting (anonymous):** anyone submits a Semaphore proof of:
@@ -112,7 +122,8 @@ Instant runoff (`RankedChoiceElection`):
 ## Security invariants in Election.sol (do not regress)
 
 - **Every subclass `vote()` must:** (1) check `proof.message` is the canonical
-  encoding of a valid ballot, (2) call `_useProof(proof)`, (3) record the ballot.
+  encoding of a valid ballot, (2) call `_useProof(proof)`, (3) record the ballot,
+  (4) call `_creditRelayer(gasStart)` with `gasStart = gasleft()` taken on entry.
   Never re-implement or skip proof checks in a subclass.
 - **Scope is what separates elections.** The message formats overlap: ranked
   ballot `[1]` packs to 2, a valid FPTP candidate index. Only the scope check stops
@@ -127,7 +138,8 @@ Instant runoff (`RankedChoiceElection`):
 - **`proof.merkleTreeRoot` must equal the current (frozen) root.** Semaphore also
   accepts recently superseded roots, but a proof against an old root reveals the
   voter registered early, which shrinks the anonymity set.
-- **`vote()` never reads `msg.sender`.** Anyone can relay.
+- **`vote()` never uses `msg.sender` to decide anything.** Anyone can relay; it is read
+  only to credit the relayer's payment.
 - **`minAnonymitySet`:** voting reverts if too few wallets registered.
 - **No admin after deployment.** Whitelist, candidates and schedule are fixed in
   the constructor. The contract is its own Semaphore group admin, so only
@@ -182,24 +194,40 @@ Instant runoff (`RankedChoiceElection`):
   (`0x7099…79C8`) is blocklisted on Arc testnet; don't use it in tests.
 - The public RPC rejects `eth_getLogs` over large ranges: query `Registered`
   events from the election's deployment block, not block 0.
-- Measured (anvil fork of Arc testnet, depth-2 group): register ~150-190k gas
-  (`registerFor` ~192k), FPTP vote ~340k, ranked vote ~383k (3-candidate
-  ranking). At 20 gwei: ~0.003-0.004 USDC to register, ~0.007-0.008 USDC to vote.
+- Measured (anvil fork of Arc testnet, 2-member group, with relayer payment):
+  `registerFor` ~240k gas, FPTP vote ~340k, ranked vote ~390-460k. Deploying an election
+  with 3 candidates and 2 wallets: ~2.0M gas (FPTP), ~2.3M (ranked), plus ~22k per extra
+  whitelisted wallet. The block gas limit is 30M. At 25 gwei: ~0.006 USDC to register,
+  ~0.009-0.012 USDC to vote, before the bounty.
 
-## Relaying and gas (planned)
+## Relaying and gas
 
-- Voters never need a wallet or burner at vote time. They send
-  `(proof)` (plus `ranking` for ranked choice) over plain HTTPS to any relayer. The proof is the authorization.
-- **Bounty:** the election creator funds the contract (in native USDC); `vote()`
-  pays `msg.sender` for each new valid vote. Pay `gasUsed * min(tx.gasprice, cap) + bounty`
-  (cap the gas price, or relayers can inflate refunds). Arc is an L1, so there is
-  no separate L1 data fee. A transfer to a blocklisted relayer reverts, so prefer
-  crediting a balance the relayer withdraws (pull payment) over paying inside
-  `vote()`. Use checks-effects-interactions and a reentrancy guard once value
-  transfers exist.
-- A voter verifies inclusion by checking `nullifierUsed(N)` on-chain, and resubmits
-  via another relayer if it's missing. A bounty enables a relayer market but
-  doesn't create one; at the demo, our backend is the only relayer.
+- Voters never need a wallet or burner at vote time. The browser publishes the proof
+  (plus `ranking` for ranked choice) as a Nostr event; any relayer subscribed to the
+  chain's topic submits it. The proof is the authorization. Registrations travel the same
+  way (EIP-712 signature + `registerFor`). See `../relayer/README.md` for the event format.
+- **Relayer payment (in `Election.sol`):** the creator funds the contract in native USDC
+  (constructor is payable; `receive()` accepts top-ups). `registerFor` and every `vote()`
+  end with `_creditRelayer(gasStart)`, which credits `msg.sender` with
+  `min(gasUsed + REFUND_GAS_OVERHEAD, MAX_REFUND_GAS) * min(tx.gasprice, maxRefundGasPrice) + relayBounty`,
+  limited to what funding is left. Relayers collect with `withdraw()`; after `votingEnd`
+  anyone can call `reclaim()`, which sends the unused funding to `creator`.
+- Invariants of the payment code (do not regress):
+  - **Pull payment only.** No value moves inside `vote()`/`registerFor()`, so a relayer
+    that can't receive funds (blocklisted on Arc) can't make a vote fail.
+  - **Voting never depends on funding.** With no funds the credit is zero and the call
+    still succeeds.
+  - **`msg.sender` decides who is paid, never whether a vote counts.**
+  - **The gas price and the refunded gas are both capped**, or a relayer could inflate
+    refunds (absurd gas price; an ERC-1271 wallet that burns gas in `isValidSignature`).
+  - `relayBounty` and `maxRefundGasPrice` are bounded to uint128 in the constructor so
+    the credit arithmetic can't overflow and block voting.
+  - `withdraw()`/`reclaim()` use checks-effects-interactions and a reentrancy lock.
+  - `creator` can only receive leftover funding after the election; it is not an admin.
+- Known limits: the refund is an estimate (measured within ~5% of real gas); a voter can
+  relay for themself and collect the bounty; a failed relay (lost race) is not refunded.
+- A voter verifies inclusion by checking `nullifierUsed(N)` on-chain. A bounty enables a
+  relayer market but doesn't create one; at the demo, our relayer is the only one.
 - ERC-4337 isn't needed: voters have no smart account. A paying `vote()` is simpler.
 
 ## Web front-end rules (when built)
@@ -223,10 +251,11 @@ Instant runoff (`RankedChoiceElection`):
 ## Next steps
 
 1. ~~Get `forge test` fully passing.~~ Done.
-2. ~~Integration tests with real proofs~~ Done in `e2e/` (passes on plain anvil and
-   on an anvil fork of Arc testnet). Still to run: `e2e/run.sh` with `arc-anvil`.
-3. Deploy Semaphore + an Election to Arc testnet (faucet USDC), verify on Arcscan.
-4. Relayer bounty in the contract, plus a minimal relay endpoint.
-5. Front-end in `../site`: connect wallet, register, vote via relay, verify
-   inclusion.
-6. Optional: factory contract for creating elections (either type); Web2 accounts.
+2. ~~Integration tests with real proofs~~ Done in `e2e/` (plain anvil and an anvil fork of
+   Arc testnet). Still to run: `e2e/run.sh` with `arc-anvil`.
+3. ~~Relayer bounty in the contract, relay transport (Nostr), front-end.~~ Done, and
+   rehearsed end to end on an anvil fork of Arc testnet.
+4. Deploy to Arc testnet with funded keys and verify on Arcscan (steps in
+   `../relayer/README.md`).
+5. Optional: rate limiting on the Nostr topic; Merkle-root whitelist (the constructor
+   loop caps an election at ~1,200 wallets on Arc); factory contract; Web2 accounts.

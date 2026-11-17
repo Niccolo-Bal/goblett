@@ -18,6 +18,11 @@ import {ISemaphoreGroups} from "@semaphore-protocol/contracts/interfaces/ISemaph
 ///
 /// The ballot is encoded in the proof's `message`, so it is bound to the proof and a
 /// relayer cannot change it. Each subclass defines that encoding.
+///
+/// Relayers are paid from funds the creator (or anyone) sends to this contract: each
+/// relayed registration (registerFor) and each counted vote credits msg.sender with a
+/// gas refund plus a fixed bounty, which they collect with withdraw(). See "Relayer
+/// payment" below.
 abstract contract Election {
     // ---------------------------------------------------------------------
     // Errors
@@ -43,10 +48,19 @@ abstract contract Election {
 
     error ElectionNotOver();
 
+    error InvalidRelayTerms();
+    error NothingToWithdraw();
+    error TransferFailed();
+    error Reentrancy();
+
     // ---------------------------------------------------------------------
     // Events
     // ---------------------------------------------------------------------
     event Registered(address indexed wallet, uint256 identityCommitment);
+    event Funded(address indexed from, uint256 amount);
+    event RelayerCredited(address indexed relayer, uint256 amount);
+    event Withdrawn(address indexed relayer, uint256 amount);
+    event Reclaimed(address indexed creator, uint256 amount);
 
     // ---------------------------------------------------------------------
     // Configuration (immutable after deployment)
@@ -78,6 +92,23 @@ abstract contract Election {
     /// @notice Votes are refused unless at least this many wallets registered.
     uint256 public immutable minAnonymitySet;
 
+    /// @notice Paid to the relayer on top of the gas refund, per relayed registration
+    ///         and per counted vote (in wei of the native token). 0 = no bounty.
+    uint256 public immutable relayBounty;
+    /// @notice Gas refunds use min(tx.gasprice, this). Without a cap, a relayer could
+    ///         bid an absurd gas price and have the election pay for it. 0 = no refund.
+    uint256 public immutable maxRefundGasPrice;
+    /// @notice Gets back whatever relayer funding is left once voting has ended.
+    ///         Has no other power: the election itself still has no admin.
+    address public immutable creator;
+
+    /// @dev Added to the measured gas: what the transaction costs outside our
+    ///      measurement (21000 base, calldata, the credit's own storage write).
+    uint256 public constant REFUND_GAS_OVERHEAD = 40_000;
+    /// @dev Upper bound on refunded gas per call. registerFor runs code of a contract
+    ///      wallet (ERC-1271), which could burn gas on purpose to inflate a refund.
+    uint256 public constant MAX_REFUND_GAS = 1_000_000;
+
     string public title;
     string[] internal _candidates;
 
@@ -87,6 +118,10 @@ abstract contract Election {
     mapping(address => bool) public isWhitelisted;
     mapping(address => bool) public hasRegistered;
     uint256 public registeredCount;
+    /// @dev Every registered commitment, in tree order. The same data as the Registered
+    ///      events, but readable in one call: a voter needs the full list to build a
+    ///      proof, and some RPCs (Arc) only serve logs for small block ranges.
+    uint256[] internal _commitments;
 
     /// @dev Our own nullifier set. We deliberately do NOT use Semaphore's
     ///      validateProof()/nullifier storage (see _useProof()).
@@ -94,6 +129,12 @@ abstract contract Election {
     /// @dev Votes per candidate (first preferences, for ranked ballots), kept live.
     uint256[] internal _tally;
     uint256 public totalVotes;
+
+    /// @notice What each relayer can withdraw().
+    mapping(address => uint256) public owed;
+    /// @dev Sum of `owed`. Invariant: address(this).balance >= totalOwed.
+    uint256 public totalOwed;
+    bool private _locked;
 
     constructor(
         ISemaphore semaphore_,
@@ -103,8 +144,10 @@ abstract contract Election {
         uint256 registrationEnd_,
         uint256 votingStart_,
         uint256 votingEnd_,
-        uint256 minAnonymitySet_
-    ) {
+        uint256 minAnonymitySet_,
+        uint256 relayBounty_,
+        uint256 maxRefundGasPrice_
+    ) payable {
         if (address(semaphore_) == address(0)) revert ZeroAddress();
         if (candidates_.length < 2) revert TooFewCandidates();
         if (candidates_.length > _maxCandidates()) revert TooManyCandidates();
@@ -112,6 +155,8 @@ abstract contract Election {
             revert InvalidSchedule();
         }
         if (minAnonymitySet_ == 0 || minAnonymitySet_ > whitelist_.length) revert InvalidMinAnonymitySet();
+        // Bounded so the credit arithmetic can never overflow (which would block voting).
+        if (relayBounty_ > type(uint128).max || maxRefundGasPrice_ > type(uint128).max) revert InvalidRelayTerms();
 
         semaphore = semaphore_;
         title = title_;
@@ -119,6 +164,10 @@ abstract contract Election {
         votingStart = votingStart_;
         votingEnd = votingEnd_;
         minAnonymitySet = minAnonymitySet_;
+        relayBounty = relayBounty_;
+        maxRefundGasPrice = maxRefundGasPrice_;
+        creator = msg.sender;
+        if (msg.value > 0) emit Funded(msg.sender, msg.value);
 
         for (uint256 i = 0; i < candidates_.length; i++) {
             _candidates.push(candidates_[i]);
@@ -164,10 +213,12 @@ abstract contract Election {
     /// @param signature 65-byte ECDSA (r, s, v) from an EOA, or anything a
     ///        contract wallet accepts via ERC-1271.
     function registerFor(address wallet, uint256 identityCommitment, bytes calldata signature) external {
+        uint256 gasStart = gasleft();
         if (!_isValidSignature(wallet, registerDigest(wallet, identityCommitment), signature)) {
             revert InvalidSignature();
         }
         _register(wallet, identityCommitment);
+        _creditRelayer(gasStart);
     }
 
     function _register(address wallet, uint256 identityCommitment) internal {
@@ -177,6 +228,7 @@ abstract contract Election {
 
         hasRegistered[wallet] = true;
         registeredCount++;
+        _commitments.push(identityCommitment);
 
         // Reverts on a zero/out-of-field commitment or one already in the tree.
         semaphore.addMember(groupId, identityCommitment);
@@ -224,7 +276,8 @@ abstract contract Election {
 
     /// @dev Every check a vote needs except the ballot itself, then burns the
     ///      nullifier. A subclass's vote() MUST (1) check that proof.message is the
-    ///      canonical encoding of a valid ballot, (2) call this, (3) record the ballot.
+    ///      canonical encoding of a valid ballot, (2) call this, (3) record the ballot,
+    ///      (4) call _creditRelayer(gasStart), where gasStart = gasleft() on entry.
     function _useProof(ISemaphore.SemaphoreProof calldata proof) internal {
         if (block.timestamp < votingStart || block.timestamp >= votingEnd) revert VotingNotOpen();
         if (registeredCount < minAnonymitySet) revert AnonymitySetTooSmall();
@@ -253,11 +306,92 @@ abstract contract Election {
     }
 
     // ---------------------------------------------------------------------
+    // Relayer payment
+    // ---------------------------------------------------------------------
+    //
+    // msg.sender is read here and nowhere else in the voting path: it decides who is
+    // paid, never whether a vote counts. Credits are bookkeeping only (pull payment):
+    // no value moves inside vote()/registerFor(), so a relayer that can't receive
+    // funds (e.g. blocklisted on Arc) can't make a vote fail.
+    //
+    // What a credit can cost the election is bounded: one per whitelisted wallet
+    // (registerFor) plus one per registered voter (vote), each at most
+    // MAX_REFUND_GAS * maxRefundGasPrice + relayBounty. A voter may relay for themself
+    // and collect the credit; that is fine.
+
+    /// @notice Anyone can add relayer funding at any time.
+    receive() external payable {
+        emit Funded(msg.sender, msg.value);
+    }
+
+    /// @notice Funding not yet promised to a relayer.
+    function relayFunds() public view returns (uint256) {
+        return address(this).balance - totalOwed;
+    }
+
+    /// @dev Credit msg.sender for the call in progress. If the election has run out of
+    ///      funding the credit is smaller or zero, and the call still succeeds: voting
+    ///      must never depend on the funding.
+    function _creditRelayer(uint256 gasStart) internal {
+        uint256 gasUsed = gasStart - gasleft() + REFUND_GAS_OVERHEAD;
+        if (gasUsed > MAX_REFUND_GAS) gasUsed = MAX_REFUND_GAS;
+        uint256 price = tx.gasprice < maxRefundGasPrice ? tx.gasprice : maxRefundGasPrice;
+
+        uint256 amount = gasUsed * price + relayBounty;
+        uint256 available = relayFunds();
+        if (amount > available) amount = available;
+        if (amount == 0) return;
+
+        owed[msg.sender] += amount;
+        totalOwed += amount;
+        emit RelayerCredited(msg.sender, amount);
+    }
+
+    /// @notice Collect everything this contract owes the caller.
+    function withdraw() external {
+        if (_locked) revert Reentrancy();
+        _locked = true;
+
+        uint256 amount = owed[msg.sender];
+        if (amount == 0) revert NothingToWithdraw();
+        // Effects before the transfer (checks-effects-interactions).
+        owed[msg.sender] = 0;
+        totalOwed -= amount;
+        (bool ok,) = msg.sender.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+        emit Withdrawn(msg.sender, amount);
+
+        _locked = false;
+    }
+
+    /// @notice After voting ends, send the unused funding back to the creator. Anyone
+    ///         can call it; what relayers are owed stays in the contract.
+    function reclaim() external {
+        if (block.timestamp < votingEnd) revert ElectionNotOver();
+        if (_locked) revert Reentrancy();
+        _locked = true;
+
+        uint256 amount = relayFunds();
+        if (amount == 0) revert NothingToWithdraw();
+        (bool ok,) = creator.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+        emit Reclaimed(creator, amount);
+
+        _locked = false;
+    }
+
+    // ---------------------------------------------------------------------
     // Views
     // ---------------------------------------------------------------------
 
     function candidates() external view returns (string[] memory) {
         return _candidates;
+    }
+
+    /// @notice All registered identity commitments, in the order they were added to
+    ///         the Merkle tree (what a voter needs to rebuild the group off-chain).
+    function commitments() external view returns (uint256[] memory) {
+        return _commitments;
     }
 
     /// @notice Live votes per candidate (first preferences for ranked ballots);

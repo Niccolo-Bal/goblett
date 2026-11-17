@@ -20,20 +20,34 @@ contract FPTPElection is Election {
         uint256 registrationEnd_,
         uint256 votingStart_,
         uint256 votingEnd_,
-        uint256 minAnonymitySet_
+        uint256 minAnonymitySet_,
+        uint256 relayBounty_,
+        uint256 maxRefundGasPrice_
     )
+        payable
         Election(
-            semaphore_, title_, candidates_, whitelist_, registrationEnd_, votingStart_, votingEnd_, minAnonymitySet_
+            semaphore_,
+            title_,
+            candidates_,
+            whitelist_,
+            registrationEnd_,
+            votingStart_,
+            votingEnd_,
+            minAnonymitySet_,
+            relayBounty_,
+            maxRefundGasPrice_
         )
     {}
 
     /// @param proof Semaphore proof whose `message` is the candidate index
     ///        and whose `scope` is this election's scope.
     function vote(ISemaphore.SemaphoreProof calldata proof) external {
+        uint256 gasStart = gasleft();
         if (proof.message >= _candidates.length) revert InvalidCandidate();
         _useProof(proof);
         _tally[proof.message]++;
         emit VoteCast(proof.nullifier, proof.message);
+        _creditRelayer(gasStart);
     }
 
     function _maxCandidates() internal pure override returns (uint256) {

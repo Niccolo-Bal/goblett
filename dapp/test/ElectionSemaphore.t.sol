@@ -44,10 +44,10 @@ contract ElectionSemaphoreTest is Test {
 
         votingStart = block.timestamp + 2 days;
         election = new RankedChoiceElection(
-            ISemaphore(address(semaphore)), "Real Semaphore", c, w, block.timestamp + 1 days, votingStart, votingStart + 1 days, 2
+            ISemaphore(address(semaphore)), "Real Semaphore", c, w, block.timestamp + 1 days, votingStart, votingStart + 1 days, 2, 0, 0
         );
         fptp = new FPTPElection(
-            ISemaphore(address(semaphore)), "Real Semaphore FPTP", c, w, block.timestamp + 1 days, votingStart, votingStart + 1 days, 2
+            ISemaphore(address(semaphore)), "Real Semaphore FPTP", c, w, block.timestamp + 1 days, votingStart, votingStart + 1 days, 2, 0, 0
         );
     }
 

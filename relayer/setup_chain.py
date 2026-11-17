@@ -12,10 +12,9 @@ Elections themselves are created from the website (or with deploy_election.py).
 import argparse
 import json
 
-from eth_account import Account
 from web3 import Web3
 
-from common import CONFIG_PATH, DEPLOYER_KEY, KINDS, RPC_URL, SITE_CONFIG_PATH, artifact, connect
+from common import CHAINS, CONFIG_PATH, KINDS, LOCAL_CHAIN_ID, RPC_URL, SITE_CONFIG_PATH, account, artifact, connect
 from deploy_election import deploy_semaphore
 from nostr import DEFAULT_RELAYS
 
@@ -39,6 +38,16 @@ def export_contracts():
     SITE_CONTRACTS_PATH.write_text(json.dumps(out))
 
 
+def _is_current_election(w3, addr) -> bool:
+    """True if `addr` is an election from the current contract build (older builds lack
+    newer functions and would break the site)."""
+    try:
+        w3.eth.contract(address=Web3.to_checksum_address(addr), abi=artifact("Election")["abi"]).functions.relayFunds().call()
+        return True
+    except Exception:
+        return False
+
+
 def ensure_chain(w3, rpc_public=None, relays=None, semaphore=None) -> dict:
     """Return the config for this chain, deploying Semaphore if it isn't there."""
     chain_id = w3.eth.chain_id
@@ -47,17 +56,19 @@ def ensure_chain(w3, rpc_public=None, relays=None, semaphore=None) -> dict:
         old = {}
     sem = semaphore or old.get("semaphore")
     if not sem or not w3.eth.get_code(Web3.to_checksum_address(sem)):
-        sem = deploy_semaphore(w3, Account.from_key(DEPLOYER_KEY))
+        sem = deploy_semaphore(w3, account(w3, "DEPLOYER_KEY"))
         old = {}  # a fresh chain: any remembered election is gone
     cfg = {
         "chainId": chain_id,
         "rpcUrl": rpc_public or old.get("rpcUrl") or w3.provider.endpoint_uri,
         "semaphore": Web3.to_checksum_address(sem),
         "nostrRelays": relays or old.get("nostrRelays") or DEFAULT_RELAYS,
+        # So the site can add the network to a wallet, show amounts and link to the explorer.
+        **CHAINS.get(chain_id, {"chainName": f"chain {chain_id}", "nativeCurrency": {"name": "Native", "symbol": "NATIVE", "decimals": 18}, "explorerUrl": None}),
     }
     # Optional default election (shown when the site is opened without ?election=).
-    if old.get("election") and w3.eth.get_code(old["election"]):
-        cfg.update({k: old[k] for k in ("election", "deployBlock") if k in old})
+    if old.get("election") and _is_current_election(w3, old["election"]):
+        cfg["election"] = old["election"]
     return cfg
 
 
@@ -74,6 +85,8 @@ def main():
     cfg = ensure_chain(w3, a.public_rpc, a.nostr_relays, a.semaphore)
     write_config(cfg)
     export_contracts()
+    if a.fund and cfg["chainId"] != LOCAL_CHAIN_ID:
+        raise SystemExit("--fund only works on a local anvil chain; use the faucet on a real chain")
     for addr in a.fund:
         w3.provider.make_request("anvil_setBalance", [Web3.to_checksum_address(addr), hex(100 * 10**18)])
         print(f"funded {addr} with 100 test coins")

@@ -25,6 +25,11 @@ abstract contract ElectionTestBase is Test {
 
     uint256 internal _nextNullifier = 1000;
 
+    // Relayer payment terms used by every test election. Elections start unfunded, so
+    // nothing is credited unless a test funds the contract.
+    uint256 internal constant BOUNTY = 0.0005 ether;
+    uint256 internal constant MAX_GAS_PRICE = 50 gwei;
+
     // =====================================================================
     // Hooks implemented per election type
     // =====================================================================
@@ -195,6 +200,16 @@ abstract contract ElectionTestBase is Test {
         assertTrue(election.hasRegistered(alice));
         assertEq(election.registeredCount(), 1);
         assertTrue(mock.isMember(election.groupId(), 42));
+    }
+
+    function test_commitments_listsRegistrationsInOrder() public {
+        assertEq(election.commitments().length, 0);
+        _register(bob, 7);
+        _register(alice, 5);
+        uint256[] memory c = election.commitments();
+        assertEq(c.length, 2);
+        assertEq(c[0], 7);
+        assertEq(c[1], 5);
     }
 
     function test_register_revertsIfNotWhitelisted() public {
@@ -513,5 +528,268 @@ abstract contract ElectionTestBase is Test {
         uint256[] memory t = election.tally();
         assertEq(t[0] + t[1] + t[2], k);
         assertEq(election.totalVotes(), k);
+    }
+
+    // =====================================================================
+    // Relayer payment (gas refund + bounty, pull payment)
+    // =====================================================================
+
+    uint256 internal constant GAS_PRICE = 25 gwei;
+
+    function _fund(uint256 amount) internal {
+        vm.deal(address(this), amount);
+        (bool ok,) = address(election).call{value: amount}("");
+        assertTrue(ok);
+    }
+
+    /// dave relays alice's registration at `gasPrice`.
+    function _relayRegistration(uint256 gasPrice) internal {
+        bytes memory sig = _sign(election, _key("alice"), alice, 42);
+        vm.txGasPrice(gasPrice);
+        vm.prank(dave);
+        election.registerFor(alice, 42, sig);
+    }
+
+    /// dave relays one vote at `gasPrice` (voting must be open).
+    function _relayVote(uint256 gasPrice) internal {
+        ISemaphore.SemaphoreProof memory p = _proof(0, _nextNullifier++);
+        vm.txGasPrice(gasPrice);
+        vm.prank(dave);
+        _submit(p, 0);
+    }
+
+    function test_relay_termsAndCreatorAreRecorded() public view {
+        assertEq(election.relayBounty(), BOUNTY);
+        assertEq(election.maxRefundGasPrice(), MAX_GAS_PRICE);
+        assertEq(election.creator(), address(this));
+    }
+
+    function test_relay_constructorRejectsHugeTerms() public {
+        // Would let the credit arithmetic overflow, which would block voting.
+        vm.expectRevert(Election.InvalidRelayTerms.selector);
+        _deployWithTerms(uint256(type(uint128).max) + 1, MAX_GAS_PRICE);
+        vm.expectRevert(Election.InvalidRelayTerms.selector);
+        _deployWithTerms(BOUNTY, uint256(type(uint128).max) + 1);
+    }
+
+    function test_relay_fundingIsCountedAndAnyoneCanFund() public {
+        assertEq(election.relayFunds(), 0);
+        vm.expectEmit(true, false, false, true, address(election));
+        emit Election.Funded(address(this), 1 ether);
+        _fund(1 ether);
+        assertEq(election.relayFunds(), 1 ether);
+    }
+
+    function test_relay_registerForCreditsRefundPlusBounty() public {
+        _fund(1 ether);
+        _relayRegistration(GAS_PRICE);
+
+        uint256 credit = election.owed(dave);
+        // bounty + gas * price, with gas somewhere between the overhead and the cap.
+        assertGt(credit, BOUNTY + election.REFUND_GAS_OVERHEAD() * GAS_PRICE);
+        assertLe(credit, BOUNTY + election.MAX_REFUND_GAS() * GAS_PRICE);
+        assertEq(election.totalOwed(), credit);
+        assertEq(election.relayFunds(), 1 ether - credit);
+        assertEq(election.owed(alice), 0); // the voter is not paid, the relayer is
+    }
+
+    function test_relay_voteCreditsRefundPlusBounty() public {
+        _fund(1 ether);
+        _openVoting();
+        _relayVote(GAS_PRICE);
+
+        uint256 credit = election.owed(dave);
+        assertGt(credit, BOUNTY + election.REFUND_GAS_OVERHEAD() * GAS_PRICE);
+        assertLe(credit, BOUNTY + election.MAX_REFUND_GAS() * GAS_PRICE);
+        assertEq(election.totalVotes(), 1);
+    }
+
+    function test_relay_directRegisterIsNotCredited() public {
+        _fund(1 ether);
+        vm.txGasPrice(GAS_PRICE);
+        _register(alice, 1);
+        assertEq(election.owed(alice), 0);
+        assertEq(election.totalOwed(), 0);
+    }
+
+    /// A relayer can't make the election pay for an inflated gas price.
+    function test_relay_gasPriceIsCapped() public {
+        _fund(100 ether);
+        _relayRegistration(MAX_GAS_PRICE * 1000);
+        assertLe(election.owed(dave), BOUNTY + election.MAX_REFUND_GAS() * MAX_GAS_PRICE);
+    }
+
+    /// A failed relay (bad signature, reused nullifier, ...) reverts, so it earns nothing.
+    function test_relay_failedCallsEarnNothing() public {
+        _fund(1 ether);
+        bytes memory sig = _sign(election, _key("bob"), alice, 42);
+        vm.prank(dave);
+        vm.expectRevert(Election.InvalidSignature.selector);
+        election.registerFor(alice, 42, sig);
+
+        _openVoting();
+        ISemaphore.SemaphoreProof memory p = _proof(0, 77);
+        _submit(p, 0); // first one counts (credited to this test contract)
+        vm.prank(dave);
+        vm.expectRevert(Election.NullifierAlreadyUsed.selector);
+        _submit(p, 0);
+        assertEq(election.owed(dave), 0);
+    }
+
+    /// Voting must never depend on the funding.
+    function test_relay_unfundedElectionStillWorksWithoutCredit() public {
+        _relayRegistration(GAS_PRICE);
+        assertTrue(election.hasRegistered(alice));
+        _register(bob, 2);
+        _register(carol, 3);
+        vm.warp(votingStart);
+        _relayVote(GAS_PRICE);
+        assertEq(election.totalVotes(), 1);
+        assertEq(election.owed(dave), 0);
+    }
+
+    function test_relay_creditIsLimitedToRemainingFunds() public {
+        _fund(1000 wei); // far less than one credit
+        _relayRegistration(GAS_PRICE);
+        assertEq(election.owed(dave), 1000 wei);
+        assertEq(election.relayFunds(), 0);
+
+        // Nothing left: later relays still succeed, for free.
+        _register(bob, 2);
+        _register(carol, 3);
+        vm.warp(votingStart);
+        _relayVote(GAS_PRICE);
+        assertEq(election.owed(dave), 1000 wei);
+        assertEq(election.totalVotes(), 1);
+    }
+
+    function test_relay_withdrawPaysOnce() public {
+        _fund(1 ether);
+        _relayRegistration(GAS_PRICE);
+        uint256 credit = election.owed(dave);
+
+        vm.expectEmit(true, false, false, true, address(election));
+        emit Election.Withdrawn(dave, credit);
+        vm.prank(dave);
+        election.withdraw();
+        assertEq(dave.balance, credit);
+        assertEq(election.owed(dave), 0);
+        assertEq(election.totalOwed(), 0);
+        assertEq(address(election).balance, 1 ether - credit);
+
+        vm.prank(dave);
+        vm.expectRevert(Election.NothingToWithdraw.selector);
+        election.withdraw();
+    }
+
+    function test_relay_withdrawRevertsWithNothingOwed() public {
+        _fund(1 ether);
+        vm.prank(dave);
+        vm.expectRevert(Election.NothingToWithdraw.selector);
+        election.withdraw();
+    }
+
+    /// A relayer that tries to re-enter withdraw() from its receive hook gets nothing extra.
+    function test_relay_withdrawBlocksReentrancy() public {
+        _fund(1 ether);
+        ReentrantRelayer attacker = new ReentrantRelayer(election);
+        bytes memory sig = _sign(election, _key("alice"), alice, 42);
+        vm.txGasPrice(GAS_PRICE);
+        attacker.relay(alice, 42, sig);
+        uint256 credit = election.owed(address(attacker));
+        assertGt(credit, 0);
+
+        // The nested call reverts (Reentrancy), which makes the transfer fail.
+        vm.expectRevert(Election.TransferFailed.selector);
+        attacker.attack();
+        assertEq(election.owed(address(attacker)), credit);
+        assertEq(address(election).balance, 1 ether);
+    }
+
+    /// A relayer that can't receive funds only hurts itself.
+    function test_relay_unpayableRelayerCannotBlockOthers() public {
+        _fund(1 ether);
+        vm.txGasPrice(GAS_PRICE);
+        bytes memory sig = _sign(election, _key("alice"), alice, 42);
+        vm.prank(address(mock)); // MockSemaphore has no receive(): it can't be paid
+        election.registerFor(alice, 42, sig);
+        vm.prank(address(mock));
+        vm.expectRevert(Election.TransferFailed.selector);
+        election.withdraw();
+
+        bytes memory sig2 = _sign(election, _key("bob"), bob, 43);
+        vm.prank(dave);
+        election.registerFor(bob, 43, sig2);
+        vm.prank(dave);
+        election.withdraw();
+        assertGt(dave.balance, 0);
+    }
+
+    function test_relay_reclaimOnlyAfterVotingEnds() public {
+        _fund(1 ether);
+        vm.expectRevert(Election.ElectionNotOver.selector);
+        election.reclaim();
+    }
+
+    /// Leftover funding goes back to the creator; what relayers are owed stays.
+    function test_relay_reclaimReturnsLeftoverToCreator() public {
+        _fund(1 ether);
+        _relayRegistration(GAS_PRICE);
+        uint256 credit = election.owed(dave);
+
+        vm.warp(votingEnd);
+        uint256 before = address(this).balance;
+        vm.prank(dave); // anyone may trigger it; the money still goes to the creator
+        election.reclaim();
+        assertEq(address(this).balance - before, 1 ether - credit);
+        assertEq(address(election).balance, credit);
+
+        vm.prank(dave);
+        election.withdraw();
+        assertEq(dave.balance, credit);
+        assertEq(address(election).balance, 0);
+
+        vm.expectRevert(Election.NothingToWithdraw.selector);
+        election.reclaim();
+    }
+
+    /// Whatever happens, the contract always holds at least what it owes.
+    function testFuzz_relay_solvent(uint96 funding, uint64 gasPrice, uint8 votes) public {
+        _fund(funding);
+        _relayRegistration(gasPrice);
+        _register(bob, 2);
+        _register(carol, 3);
+        vm.warp(votingStart);
+        for (uint256 i = 0; i < votes % 8; i++) {
+            _relayVote(gasPrice);
+        }
+        assertGe(address(election).balance, election.totalOwed());
+        assertEq(election.owed(dave), election.totalOwed());
+    }
+
+    /// The test contract is the creator and receives reclaimed funds.
+    receive() external payable {}
+
+    function _deployWithTerms(uint256 bounty, uint256 maxGasPrice) internal virtual returns (Election);
+}
+
+/// Relays a registration, then tries to withdraw twice by re-entering from receive().
+contract ReentrantRelayer {
+    Election internal immutable election;
+
+    constructor(Election e) {
+        election = e;
+    }
+
+    function relay(address wallet, uint256 commitment, bytes calldata sig) external {
+        election.registerFor(wallet, commitment, sig);
+    }
+
+    function attack() external {
+        election.withdraw();
+    }
+
+    receive() external payable {
+        election.withdraw();
     }
 }

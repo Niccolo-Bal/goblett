@@ -22,22 +22,27 @@ are signed with throwaway keys, so the Nostr signature authorizes nothing. Anyon
 run another relayer on the same topic; whoever submits first wins and the rest see
 AlreadyRegistered / NullifierAlreadyUsed in simulation (no gas spent).
 
+Payment: each relay credits this relayer inside the election contract (gas refund +
+bounty), funded by the election's creator. Collect it with withdraw.py. By default (off
+the local chain) relays the election would not pay back are refused.
+
 Privacy: the relayer never sees a voter's IP; the Nostr relays do instead (plus
 timing). Use Tor/VPN for real elections.
 
-Env: RPC_URL, RELAYER_KEY.
+Env (or relayer/.env): RPC_URL, RELAYER_KEY, REQUIRE_REIMBURSEMENT.
 """
 
 import asyncio
 import json
+import os
 import threading
 import time
 
-from eth_account import Account
 from web3 import Web3
+from web3.logs import DISCARD
 
 import nostr
-from common import CONFIG_PATH, KINDS, RELAYER_KEY, RPC_URL, artifact, connect, load_config, revert_reason, send
+from common import CONFIG_PATH, KINDS, LOCAL_CHAIN_ID, RPC_URL, account, artifact, connect, load_config, revert_reason, send
 
 MAX_CONTENT = 16 * 1024
 U256 = 2**256
@@ -45,7 +50,10 @@ U256 = 2**256
 MAX_GAS = 3_000_000  # a register is ~200k and a vote ~400k; refuse anything far beyond
 
 w3 = connect(RPC_URL)
-relayer = Account.from_key(RELAYER_KEY)
+relayer = account(w3, "RELAYER_KEY")
+# Refuse relays the election would not pay back (unfunded, or its gas price cap is below
+# the going rate). On by default except on the local chain; REQUIRE_REIMBURSEMENT=0/1 overrides.
+REQUIRE_REIMBURSEMENT = os.environ.get("REQUIRE_REIMBURSEMENT", "0" if w3.eth.chain_id == LOCAL_CHAIN_ID else "1") == "1"
 tx_lock = threading.Lock()  # one tx at a time, so nonces never collide
 cfg = None
 elections = {}  # address -> (contract, kind), for addresses that passed lookup_election
@@ -111,7 +119,7 @@ def handle_register(body: dict) -> dict:
     commitment = uint(body.get("identityCommitment"), "identityCommitment")
     election, _ = lookup_election(body.get("election"))
     fn = election.functions.registerFor(wallet, commitment, sig)
-    return submit(fn, f"registerFor {wallet}")
+    return submit(election, fn, f"registerFor {wallet}")
 
 
 def handle_vote(body: dict) -> dict:
@@ -135,19 +143,43 @@ def handle_vote(body: dict) -> dict:
     else:
         fn = election.functions.vote(proof)
     # Log only the nullifier: it is public on-chain anyway and links to nothing.
-    return submit(fn, f"vote nullifier {hex(proof[2])[:14]}...")
+    return submit(election, fn, f"vote nullifier {hex(proof[2])[:14]}...")
 
 
-def submit(fn, label: str) -> dict:
+def reimbursement_check(election):
+    """A precheck for send(): raise unless the election will pay back this relay.
+    Mirrors Election._creditRelayer: min(funds, (gas + overhead) * min(price, cap) + bounty)."""
+    f = election.functions
+    bounty, cap, funds = f.relayBounty().call(), f.maxRefundGasPrice().call(), f.relayFunds().call()
+
+    def check(gas: int, gas_price: int):
+        cost = gas * gas_price
+        credit = min(funds, min(gas + 40_000, 1_000_000) * min(gas_price, cap) + bounty)
+        if credit < cost:
+            why = "it has no relayer funding left" if funds < cost else f"its gas price cap ({cap / 1e9:g} gwei) is below the current price"
+            raise BadRequest(f"this relayer would not be reimbursed: {why}")
+
+    return check
+
+
+def submit(election, fn, label: str) -> dict:
     with tx_lock:
         try:
-            rcpt = send(w3, relayer, fn, gas_cap=MAX_GAS)
+            precheck = reimbursement_check(election) if REQUIRE_REIMBURSEMENT else None
+            rcpt = send(w3, relayer, fn, gas_cap=MAX_GAS, precheck=precheck)
+        except BadRequest:
+            raise
         except Exception as e:  # revert during estimate_gas, or RPC failure
             reason = revert_reason(e)
             print(f"  rejected {label}: {reason}")
             return {"ok": False, "error": reason}
     ok = rcpt.status == 1
-    print(f"  {'sent' if ok else 'FAILED'} {label}: tx {rcpt.transactionHash.to_0x_hex()} gas {rcpt.gasUsed}")
+    credited = sum(ev["args"]["amount"] for ev in election.events.RelayerCredited().process_receipt(rcpt, errors=DISCARD))
+    cost = rcpt.gasUsed * rcpt.effectiveGasPrice
+    print(
+        f"  {'sent' if ok else 'FAILED'} {label}: tx {rcpt.transactionHash.to_0x_hex()} gas {rcpt.gasUsed},"
+        f" paid {cost / 1e18:.6f}, credited {credited / 1e18:.6f}"
+    )
     return {"ok": ok, "txHash": rcpt.transactionHash.to_0x_hex(), "gasUsed": rcpt.gasUsed}
 
 

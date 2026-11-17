@@ -7,6 +7,7 @@ the relayer directly, and anyone can run another relayer on the same topic.
 
 | | |
 |---|---|
+| Config | `relayer/.env` for `RPC_URL`, `DEPLOYER_KEY`, `RELAYER_KEY` (see `.env.example`); not needed on local anvil |
 | Relays | `nostrRelays` in `election.json` (default `wss://nos.lol`, `wss://relay.primal.net`; set with `setup_chain.py --nostr-relays`) |
 | Topic | tag `["t", "goblett-<chainId>"]`, one per chain |
 | Request, kind 9467 | content `{"type":"register", election, wallet, identityCommitment, signature}` or `{"type":"vote", election, proof, ranking?}` |
@@ -44,9 +45,9 @@ npm install && npm run dev        # open http://localhost:5173
 ```
 
 Create an election from the site ("Create a new election": title, type, candidates,
-voter wallets, registration end, voting end) and confirm the deployment in MetaMask. The
-site then opens it at `?election=<address>&block=<deploy block>`; share that link with
-voters. `deploy_election.py` does the same from the command line.
+voter wallets, registration end, voting end, relayer bounty and funding) and confirm the
+deployment in MetaMask. The site then opens it at `?election=<address>`; share that link
+with voters. `deploy_election.py` does the same from the command line.
 
 After changing the contracts: `forge build`, then `setup_chain.py` again (it re-exports
 `site/contracts.json`), then restart the relayer. Elections deployed from an older build
@@ -62,16 +63,71 @@ if a deployment hangs, use MetaMask's "Clear activity tab data" for the account.
 
 `site/smoke-test.mjs [fptp|ranked]` runs the whole flow headlessly with anvil wallets.
 
+## Relayer payment
+
+Each election holds funding sent by its creator (with the deployment, or later by anyone).
+Every relayed registration (`registerFor`) and every counted vote credits the relayer
+inside the contract: its gas, at up to the election's `maxRefundGasPrice`, plus
+`relayBounty`. Nothing is transferred during the relay itself.
+
+```bash
+.venv\Scripts\python withdraw.py 0xELECTION [0xELECTION ...]   # collect what is owed
+```
+
+Off the local chain the relayer refuses relays it would not be paid back for (election
+out of funding, or its gas price cap below the current price); `REQUIRE_REIMBURSEMENT=0`
+turns that off. After voting ends anyone can call `reclaim()` (button on the site) to
+send the unused funding back to the creator.
+
+## Deploying on Arc testnet
+
+Arc testnet: chain 5042002, RPC `https://rpc.testnet.arc.io`, gas paid in USDC (18
+decimals as the native token), explorer `https://testnet.arcscan.app`.
+
+1. **Keys.** Create two fresh keys (`cast wallet new`), fund both from the Arc faucet, and
+   put them in `relayer/.env` (copy `.env.example`; the file is gitignored). The scripts
+   refuse to use the built-in anvil keys on a real chain, because those are public.
+   Also fund the MetaMask wallet that will create elections.
+2. **Rehearse on a fork** (free, optional): `anvil --fork-url https://rpc.testnet.arc.io
+   --port 8546`, then run steps 3-5 with `RPC_URL=http://127.0.0.1:8546` and
+   `ALLOW_DEV_KEYS=1`.
+3. **Chain setup**, once: `.venv\Scripts\python setup_chain.py`. Deploys Semaphore
+   (~12.5M gas in three transactions, roughly 0.3 USDC at 25 gwei) and writes the config,
+   including the network details the site hands to MetaMask. To use a Semaphore you
+   deployed and verified yourself (`forge script script/DeploySemaphore.s.sol`), pass
+   `--semaphore 0x...`.
+4. **Verify on Arcscan** so voters can check what they are trusting: Semaphore,
+   SemaphoreVerifier and PoseidonT3 against npm `@semaphore-protocol/contracts` 4.14.5,
+   and one election of each type (`forge verify-contract`).
+5. **Relayer**: `.venv\Scripts\python relayer.py`, on a machine that stays on for the
+   whole election.
+6. **Site**: `npm run build` in `site/` and host `site/dist/` on any static HTTPS host.
+   `election.json` (chain config) and the contract bytecode are part of the build, so
+   build after step 3.
+
+Things that differ from the local chain:
+
+- No `advance.py` and no `--fund`: schedules run in real time and funds come from the faucet.
+- The deployment transaction carries the whole whitelist. Arc's block gas limit is 30M and
+  each wallet costs about 22k gas, so one election tops out around 1,200 wallets.
+- Measured on a fork of Arc testnet at ~25 gwei: registration ~240k gas, FPTP vote ~340k,
+  ranked vote ~390-460k. With a 0.0005 bounty each, budget about 0.015-0.02 USDC per voter.
+- Arc rejects value transfers involving blocklisted addresses. A blocklisted relayer can
+  still relay but can't withdraw; nothing else is affected.
+
 ## Limits
 
-- The messages are public on the Nostr relays (as they would be on a public chain), and
-  the relays see the sender's IP and timing instead of our relayer. Registering and
-  voting from the same IP gives a relay operator a hint. Use Tor/VPN for anything real.
+- The messages are public on the Nostr relays (as they are on a public chain), and the
+  relays see the sender's IP and timing instead of our relayer. Voters' browsers also
+  read the chain through the public RPC, whose operator sees their IP. Registering and
+  voting from the same IP gives those operators a hint. Use Tor/VPN for anything real.
 - Anyone can post to the topic. Invalid messages cost the relayer only a simulation
   (no gas), but there is no rate limit yet.
+- A relay can still lose a little: the refund is an estimate (measured within about 5% of
+  the real gas), and if two relayers submit the same message, the slower transaction
+  fails and its gas is not refunded.
 - The relayer catches up on at most the last 24 hours of events, and never on events
   older than the chain itself. After a local chain restart a new election can reuse an
   old address, and an old registration signature for it would otherwise still be valid.
 - The identity secret is in the browser's localStorage only. Clearing site data loses
   the vote; back it up from the page.
-- No bounty yet: the relayer pays all gas.

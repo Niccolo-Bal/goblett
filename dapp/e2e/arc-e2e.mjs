@@ -78,6 +78,10 @@ async function warpTo(ts) {
 }
 // Proofs from snarkjs are strings; the contract wants a uint tuple.
 const toTuple = (p) => ({ ...p, points: [...p.points] })
+// Relayer payment terms (native token, 18 decimals; USDC on Arc).
+const BOUNTY = ethers.parseEther("0.0005")
+const MAX_REFUND_GAS_PRICE = ethers.parseUnits("100", "gwei")
+const FUNDING = ethers.parseEther("1")
 const fmtUsdc = (wei) => `${ethers.formatUnits(wei, 18)} USDC`
 
 async function main() {
@@ -114,7 +118,10 @@ async function main() {
         regEnd,
         votingStart,
         votingEnd,
-        3
+        3,
+        BOUNTY,
+        MAX_REFUND_GAS_PRICE,
+        { value: FUNDING } // relayer funding, paid by the creator
     )
     const deployRcpt = await election.deploymentTransaction().wait()
     console.log(`  Election at ${await election.getAddress()} (gas ${deployRcpt.gasUsed})`)
@@ -164,7 +171,10 @@ async function main() {
     // Query from the deployment block: Arc's RPC rejects eth_getLogs from block 0
     // ("requested range too large"). The front-end must do the same.
     const events = await election.queryFilter(election.filters.Registered(), deployRcpt.blockNumber)
-    const group = new Group(events.map((e) => e.args.identityCommitment))
+    // The front-end reads commitments() instead (one call; no log range limits).
+    const listed = await election.commitments()
+    check(listed.length === events.length && events.every((e, i) => e.args.identityCommitment === listed[i]), "commitments() matches the Registered events, in order")
+    const group = new Group([...listed])
     const onchainRoot = await semaphore.getMerkleTreeRoot(groupId)
     check(group.root === onchainRoot, `off-chain group root matches on-chain (${group.size} members, depth ${group.depth})`)
 
@@ -191,6 +201,17 @@ async function main() {
     check(await election.nullifierUsed(p0.nullifier), "nullifierUsed(N) is true (voter can verify inclusion)")
 
     await expectRevert(election.connect(relayer).vote(p0, r0), "NullifierAlreadyUsed", "replaying the same proof")
+
+    // Relayer payment: so far the relayer paid for one registerFor and one vote.
+    const owedNow = await election.owed(relayer.address)
+    const spent = rf.fee + voteRcpt.fee
+    console.log(`  relayer spent ${fmtUsdc(spent)}, is owed ${fmtUsdc(owedNow)} (2 bounties = ${fmtUsdc(2n * BOUNTY)})`)
+    check(owedNow >= spent, "relayer is owed at least the gas it paid")
+    check(owedNow <= spent + 2n * BOUNTY + ethers.parseEther("0.002"), "and not much more than gas + 2 bounties")
+    const balBeforeW = await provider.getBalance(relayer.address)
+    const wRcpt = await (await election.connect(relayer).withdraw()).wait()
+    check((await provider.getBalance(relayer.address)) === balBeforeW + owedNow - wRcpt.fee, "withdraw() pays the relayer exactly what it was owed")
+    await expectRevert(election.connect(relayer).withdraw(), "NothingToWithdraw", "second withdraw")
 
     console.log("  generating tamper proofs for voter 1...")
     const r1 = [0, 2]
@@ -248,7 +269,7 @@ async function main() {
     console.log("\n[6] FPTPElection on the same Semaphore (message = candidate index)")
     const t0 = await latestTimestamp()
     const fFactory = new ethers.ContractFactory(fptpArt.abi, fptpArt.bytecode.object, deployer)
-    const fptp = await fFactory.deploy(SEMAPHORE, "goblett e2e fptp", ["Alice", "Bob", "Carol"], voterAddrs, t0 + 600, t0 + 1200, t0 + 1800, 3)
+    const fptp = await fFactory.deploy(SEMAPHORE, "goblett e2e fptp", ["Alice", "Bob", "Carol"], voterAddrs, t0 + 600, t0 + 1200, t0 + 1800, 3, 0, 0)
     const fDeploy = await fptp.deploymentTransaction().wait()
     const fScope = await fptp.scope()
     check((await fptp.groupId()) !== groupId && fScope !== scope, "separate Semaphore group and scope")
@@ -259,8 +280,7 @@ async function main() {
         await (await fptp.connect(voters[i]).register(fIds[i].commitment)).wait()
     }
     await warpTo(t0 + 1200)
-    const fEvents = await fptp.queryFilter(fptp.filters.Registered(), fDeploy.blockNumber)
-    const fGroup = new Group(fEvents.map((e) => e.args.identityCommitment))
+    const fGroup = new Group([...(await fptp.commitments())])
     check(fGroup.root === (await semaphore.getMerkleTreeRoot(await fptp.groupId())), "FPTP group root matches")
 
     const fVotes = [1, 1, 0, 2]

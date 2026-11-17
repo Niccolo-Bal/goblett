@@ -15,14 +15,84 @@ DAPP = HERE.parent / "dapp"
 CONFIG_PATH = HERE / "election.json"
 SITE_CONFIG_PATH = HERE.parent / "site" / "public" / "election.json"
 
+
+
+def _load_dotenv():
+    """Read KEY=VALUE lines from relayer/.env (gitignored) into the environment.
+    Real environment variables win. Keeps private keys out of the repo and the shell history."""
+    path = HERE / "relayer.env"
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
+
 RPC_URL = os.environ.get("RPC_URL", "http://127.0.0.1:8545")
-# Anvil dev keys (public, test-only). #1 is skipped: Arc testnet blocklists it.
-DEPLOYER_KEY = os.environ.get(
-    "DEPLOYER_KEY", "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-)  # #0
-RELAYER_KEY = os.environ.get(
-    "RELAYER_KEY", "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6"
-)  # #9
+LOCAL_CHAIN_ID = 31337  # anvil
+# Anvil dev keys: PUBLIC, for the local chain only (#1 is skipped: Arc blocklists it).
+_ANVIL_KEYS = {
+    "DEPLOYER_KEY": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",  # #0
+    "RELAYER_KEY": "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",  # #9
+}
+
+# What a wallet needs to know to add a chain (EIP-3085). Used by the site.
+CHAINS = {
+    5042002: {
+        "chainName": "Arc Testnet",
+        "nativeCurrency": {"name": "USDC", "symbol": "USDC", "decimals": 18},
+        "explorerUrl": "https://testnet.arcscan.app",
+    },
+    LOCAL_CHAIN_ID: {
+        "chainName": "goblett local (anvil)",
+        "nativeCurrency": {"name": "Test Ether", "symbol": "ETH", "decimals": 18},
+        "explorerUrl": None,
+    },
+}
+
+
+def account(w3: Web3, name: str):
+    """The account for DEPLOYER_KEY / RELAYER_KEY. Off the local chain the key must be
+    set explicitly: the anvil defaults are public, so anyone could spend from them."""
+    from eth_account import Account
+
+    key = os.environ.get(name)
+    if not key:
+        if w3.eth.chain_id != LOCAL_CHAIN_ID and os.environ.get("ALLOW_DEV_KEYS") != "1":
+            raise SystemExit(
+                f"{name} is not set. On chain {w3.eth.chain_id} you must use your own funded key: put\n"
+                f"  {name}=0x...\nin relayer/.env (gitignored). The built-in anvil keys are public.\n"
+                f"(For a local fork of a real chain, set ALLOW_DEV_KEYS=1.)"
+            )
+        key = _ANVIL_KEYS[name]
+    return Account.from_key(key)
+
+
+def fees(w3: Web3) -> dict:
+    """EIP-1559 fee fields, set explicitly. maxFee = 2 * base fee + tip leaves room for
+    the base fee to rise while the transaction waits; only base + tip is actually paid.
+    (Arc silently drops transactions below its 20 gwei minimum base fee.)"""
+    base = w3.eth.get_block("latest").get("baseFeePerGas")
+    if base is None:  # pre-1559 chain
+        return {"gasPrice": w3.eth.gas_price}
+    try:
+        tip = w3.eth.max_priority_fee
+    except Exception:
+        tip = w3.to_wei(1, "gwei")
+    return {"maxFeePerGas": 2 * base + tip, "maxPriorityFeePerGas": tip}
+
+
+def expected_gas_price(w3: Web3) -> int:
+    """What a transaction sent now should pay per gas (base fee + tip)."""
+    f = fees(w3)
+    if "gasPrice" in f:
+        return f["gasPrice"]
+    return w3.eth.get_block("latest")["baseFeePerGas"] + f["maxPriorityFeePerGas"]
+
 
 KINDS = {"fptp": "FPTPElection", "ranked": "RankedChoiceElection"}
 
@@ -75,18 +145,35 @@ def revert_reason(e: Exception) -> str:
     return msg[:200]
 
 
-def send(w3: Web3, account, fn, gas_floor: int = 0, gas_cap: int = 0) -> dict:
-    """Simulate (estimate_gas reverts with the reason), then sign, send, and wait."""
-    gas = fn.estimate_gas({"from": account.address})
+_next_nonce: dict[str, int] = {}  # address -> next nonce this process will use
+
+
+def _nonce(w3: Web3, address: str) -> int:
+    """The RPC's pending nonce, but never below one this process already used. Load-balanced
+    public RPCs (Arc's) can answer from a node that hasn't seen our last block yet, which
+    hands back a stale nonce right after a receipt and gets the tx rejected as 'nonce too low'."""
+    return max(w3.eth.get_transaction_count(address, "pending"), _next_nonce.get(address, 0))
+
+
+def send(w3: Web3, account, fn, gas_cap: int = 0, precheck=None, value: int = 0) -> dict:
+    """Simulate (estimate_gas reverts with the reason), then sign, send, and wait.
+    `precheck(gas, gas_price)` may raise to abort before anything is sent."""
+    gas = fn.estimate_gas({"from": account.address, "value": value})
     if gas_cap and gas > gas_cap:
         raise ValueError(f"needs {gas} gas, over the relayer's limit")
+    if precheck:
+        precheck(gas, expected_gas_price(w3))
+    nonce = _nonce(w3, account.address)
     tx = fn.build_transaction(
         {
             "from": account.address,
-            "nonce": w3.eth.get_transaction_count(account.address, "pending"),
-            "gas": max(int(gas * 1.2), gas_floor),
+            "nonce": nonce,
+            "gas": int(gas * 1.2),
+            "value": value,
+            **fees(w3),
         }
     )
     signed = account.sign_transaction(tx)
     h = w3.eth.send_raw_transaction(signed.raw_transaction)
-    return w3.eth.wait_for_transaction_receipt(h, timeout=120)
+    _next_nonce[account.address] = nonce + 1
+    return w3.eth.wait_for_transaction_receipt(h, timeout=180)

@@ -3,3 +3,5 @@ __pycache__/
 # per-deployment, local chain
 election.json
 relayer.log
+# private keys
+.env
