@@ -29,4 +29,33 @@ signatures and locally stored secretes, while maintaining minimal drawbacks (see
 
 ## Limitations + Mitigants
 
+### Cannot Change Votes
+
+This is the biggest structural issue. By having nullifiers, and allowing only allowing users to submit their vote once
+(which is needed, since we cannot identify identities at vote time by construction). In most online voting systems,
+this is seen as a necessity to avoid collusion. In reality, it doesn't impact anonymity or security at all, but is important to
+note.
+
+A workaround is to shorten the window for voting, and then have relayers or voters wait until that window till they actually input
+their vote (which they placed in advance), which would have the same effect as allowing multiple votes in terms of avoiding collusion.
+We chose not to take that approach for this hackathon.
+
+### Nostr Opens Vulnerabilities
+
+This is the only open vulnerability, and is a fairly weak one. Attackers could spam the topic with pointless messages or 
+false proofs, leading to what could amount to many false expensive checks for relayers. Most Nostr nodes have some level
+of IP or pubkey rate limit though, so the problem would largely fix itself. Though a coordinated attack is still a
+possible risk (though this only impacts the Web2 portion of Goblett, the DApp would remain unaffected).
+
+### Unencrypted Votes
+
+### OHTTP Not Truely Oblivious
+
+The current OHTTP setup uses the built-in Cloudflare OHTTP relay system which, though it is reportedly self-audited, means that
+Cloudflare could pair the IP + unencrypted messages.
+
+The fix for this would be to run our own decrypter, and have 3rd party (or many) run the OHTTP. Though this requires trust that
+there is no collusion, and opens up the possibility for the OHTTP host to not forward unwanted IPs. This could be solved by allowing 
+anyone to run an OHTTP, which would work at scale.
+
 ## Grok Bot Usage (for SpaceXSI Bounty)

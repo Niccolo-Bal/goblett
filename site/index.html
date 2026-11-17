@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>goblet</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>goblet</h1>
+      <div id="wallet">
+        <span id="account" class="muted">not connected</span>
+        <button id="connect">Connect MetaMask</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="election" class="card">
+        <h2 id="title">Loading election…</h2>
+        <dl id="info"></dl>
+        <button id="refresh" class="secondary">Refresh</button>
+      </section>
+
+      <section id="register" class="card">
+        <h2>1. Register (linked to your wallet)</h2>
+        <p class="muted">
+          Generates a secret identity in this browser and signs its public commitment with MetaMask.
+          The relayer submits it, so your wallet needs no gas. The signature carries no vote.
+        </p>
+        <div id="regStatus"></div>
+        <button id="registerBtn" disabled>Create identity &amp; sign registration</button>
+      </section>
+
+      <section id="vote" class="card">
+        <h2>2. Vote (anonymous)</h2>
+        <p class="muted">
+          Needs no wallet. Your browser proves "I hold one of the registered identities" without saying which,
+          and sends only the proof to the relayer.
+        </p>
+        <label>Identity
+          <select id="identitySel"></select>
+        </label>
+        <div id="ballot"></div>
+        <button id="voteBtn" disabled>Generate proof &amp; vote</button>
+        <div id="voteStatus"></div>
+      </section>
+
+      <section id="results" class="card">
+        <h2>Results</h2>
+        <div id="tally"></div>
+      </section>
+
+      <section class="card">
+        <h2>Backup / import identity</h2>
+        <p class="muted">The secret is the only way to vote. Anyone holding it can vote as you and see your vote.</p>
+        <button id="exportBtn" class="secondary">Show secret for selected identity</button>
+        <pre id="exported"></pre>
+        <input id="importTxt" placeholder="paste exported secret" />
+        <button id="importBtn" class="secondary">Import</button>
+      </section>
+
+      <pre id="log"></pre>
+    </main>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
