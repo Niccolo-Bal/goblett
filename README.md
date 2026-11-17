@@ -23,9 +23,13 @@ signatures and locally stored secretes, while maintaining minimal drawbacks (see
 <img src="media/Goblett%20Diagram.png" alt="A sleeping orange cat">
 </center>
 
-`goblett-<chainId>-<election address>`
+`goblett-<chainId>`
 
-Arc Semaphore address: [`0x21F9ee5fbA61be8755E49eE7Cb7F679077429482`](https://explorer.arc.io/address/0x21F9ee5fbA61be8755E49eE7Cb7F679077429482?tab=txs)
+Arc testnet: [0x78e50FBA810bb1496c8C1c5209F491AB1Aa8a743](
+  https://explorer.testnet.arc.io/address/0x78e50FBA810bb1496c8C1c5209F491AB1Aa8a743)
+
+Arc mainnet: [0x21F9ee5fbA61be8755E49eE7Cb7F679077429482](
+  https://explorer.arc.io/address/0x21F9ee5fbA61be8755E49eE7Cb7F679077429482?tab=txs)
 
 ### Why not use wallets for semaphore secretes?
 
@@ -56,7 +60,7 @@ possible risk (though this only impacts the Web2 portion of Goblett, the DApp wo
 Votes are signed, and cannot be modified without changing the proof, but contain the vote unencrypted. This means 
 that if you can tie a voter to a vote (or to a specific time), you can tie them to who they voted for. GAMI and other
 systems get around this by having a trusted party decrypt the votes and then publishing results with an sk-SNARK proof, 
-and this solution or similar requires trust. However, tieing a voter to a vote is already a breach of security,
+but this solution and other similar ones require trust. However, tieing a voter to a vote is already a breach of security,
 so for an airtight system, this doesn't arise as an issue.   
 
 ### OHTTP Not Truely Oblivious
@@ -72,4 +76,4 @@ allowing anyone to run an OHTTP or decrypter, which would work at scale.
 
 Grok Bot was used consistently throughout the project primarily to check for vulnerabilities. A team of three
 specialist bots ("Red," "Blue," and "Scout") worked together to uncover several vulnerabilities at each step 
-of the project that were not found initially by devs or coding agents (see `AUDIT_REPORT.md`).
+of the project that were not found initially by devs or coding agents. See `AUDIT_REPORT.md`.
