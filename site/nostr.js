@@ -37,29 +37,14 @@ export async function publish(cfg, body) {
   return { id: event.id, accepted }
 }
 
-/// Wait until `onChain()` is true (the only proof that counts). A relayer's reply
-/// event is used just to fail fast with its error; replies are unauthenticated, so
-/// an "ok" reply is never trusted on its own.
-export async function confirm(cfg, id, onChain, timeoutMs = 90000) {
-  let reply
-  const sub = pool.subscribeMany(cfg.nostrRelays, { kinds: [KIND_REPLY], "#e": [id] }, {
-    onevent: (e) => {
-      try {
-        reply ??= JSON.parse(e.content)
-      } catch {}
-    },
-  })
-  try {
-    const deadline = Date.now() + timeoutMs
-    while (Date.now() < deadline) {
-      // Only the chain decides. Anyone can post a reply, so a reply's error is never
-      // treated as final (R3-8); it is shown below only as an unverified hint.
-      if (await onChain()) return { ok: true }
-      await new Promise((r) => setTimeout(r, 1000))
-    }
-    const hint = reply && !reply.ok ? ` A relayer replied "${String(reply.error).slice(0, 200)}" (unverified: anyone can post replies).` : ""
-    throw new Error(`still pending, not on-chain yet. The message is stored on Nostr, so any relayer can still submit it later.${hint}`)
-  } finally {
-    sub.close()
+/// Wait until `onChain()` is true. The browser reads the chain itself and ignores
+/// relayer replies entirely: they are unauthenticated, so they can't be trusted for
+/// success or failure (R3-8). `_id` is kept so callers don't change.
+export async function confirm(_cfg, _id, onChain, timeoutMs = 90000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await onChain()) return { ok: true }
+    await new Promise((r) => setTimeout(r, 2000))
   }
+  throw new Error("still pending, not on-chain yet. The message is stored on Nostr, so any relayer can still submit it later.")
 }
