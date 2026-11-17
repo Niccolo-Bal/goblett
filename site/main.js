@@ -262,10 +262,10 @@ async function connect() {
   log(`using wallet: ${mm ? mm.info.name : "window.ethereum"}${wallets.length > 1 ? ` (found ${wallets.map((w) => w.info.name).join(", ")})` : ""}`)
   const [acc] = await eth.request({ method: "eth_requestAccounts" })
   account = ethers.getAddress(acc)
-  loadAccount()
+  resetAccount()
   eth.on?.("accountsChanged", (accs) => {
     account = accs[0] ? ethers.getAddress(accs[0]) : undefined
-    loadAccount()
+    resetAccount()
     refresh()
   })
   await refresh()
@@ -535,6 +535,14 @@ function renderAccount() {
   $("accountCard").hidden = !account
 }
 
+// The username lookup sends the wallet address to goblett's server over a direct
+// connection, tying it to this IP, so it only runs when the voter asks (R4-3).
+function resetAccount() {
+  username = undefined
+  renderAccount()
+  if (account) setStatus("accountStatus", "Looking up your username sends this wallet's address to goblett's server.", "muted")
+}
+
 async function loadAccount() {
   username = undefined
   renderAccount()
@@ -775,6 +783,7 @@ $("voteBtn").onclick = vote
 $("refresh").onclick = refresh
 $("createBtn").onclick = createElection
 $("usernameBtn").onclick = saveUsername
+$("lookupBtn").onclick = loadAccount
 $("newWhitelist").addEventListener("input", previewWhitelist)
 $("reclaimBtn").onclick = reclaim
 $("identitySel").onchange = () => {
