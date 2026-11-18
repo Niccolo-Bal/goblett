@@ -124,16 +124,23 @@ const votedKey = (commitment) => `goblett:voted:${cfg.election.toLowerCase()}:${
 // Chain reads
 // ---------------------------------------------------------------------------
 // "testnet" when the page is opened under /testnet, else null (the main network).
-const NETWORK = location.pathname.split("/")[1] === "testnet" ? "testnet" : null
+// (Old /testnet links are redirected by index.html to app.html?network=testnet.)
+const NETWORK =
+  location.pathname.split("/")[1] === "testnet" || new URLSearchParams(location.search).get("network") === "testnet" ? "testnet" : null
+
+// Messages for when no election can be shown go to the lobby, which is what's visible then.
+const lobbyMessage = (msg, cls = "err") => {
+  $("lobbyMsg").className = cls
+  $("lobbyMsg").textContent = msg
+}
 
 async function init() {
   try {
     // Public chain config (RPC, Semaphore address, Nostr relays), written by relayer/setup_chain.py.
-    // The first path segment picks the network: / is the main one, /testnet reads
-    // election.testnet.json. Same page and code either way.
+    // ?network=testnet reads election.testnet.json instead. Same page and code either way.
     cfg = await (await fetch(`/election${NETWORK ? "." + NETWORK : ""}.json`, { cache: "no-store" })).json()
   } catch {
-    $("title").textContent = `Chain not set up${NETWORK ? ` for /${NETWORK}` : ""} (run relayer/setup_chain.py, then reload)`
+    lobbyMessage(`Chain not set up${NETWORK ? ` for ${NETWORK}` : ""} (run relayer/setup_chain.py, then reload).`)
     return
   }
   if (NETWORK) {
@@ -147,11 +154,7 @@ async function init() {
   // Which election? ?election=0x... in the URL, else the config's default (if any).
   const q = new URLSearchParams(location.search)
   const fromUrl = q.get("election")
-  if (!fromUrl && !cfg.election) {
-    $("title").textContent = "No election selected. Create one below."
-    $("createCard").open = true
-    return
-  }
+  if (!fromUrl && !cfg.election) return
   try {
     if (fromUrl) cfg.election = ethers.getAddress(fromUrl)
     // Verify before rendering anything the contract returns (R3-6): its runtime code
@@ -164,11 +167,11 @@ async function init() {
     cfg.kind = kind
     election = c
   } catch (e) {
-    $("title").textContent = `No goblett election at ${fromUrl ?? cfg.election} on chain ${cfg.chainId}. Create one below.`
-    $("createCard").open = true
+    lobbyMessage(`There's no Goblett election at ${fromUrl ?? cfg.election} on ${cfg.chainName ?? "chain " + cfg.chainId}. Check the link, or start a new one.`)
     return
   }
   document.body.classList.add("has-election")
+  document.title = "Goblett · Loading election…"
   prefetchProofArtifacts()
   await refresh()
   setInterval(refresh, REFRESH_MS)
@@ -185,6 +188,64 @@ async function refresh() {
       code === null ? `Chain RPC not reachable at ${cfg.rpcUrl}` : code === "0x" ? `No election contract at ${cfg.election}. Redeploy, then reload.` : `Error: ${errMsg(e)}`
   }
 }
+
+// ---------------------------------------------------------------------------
+// Phase, countdown and progress steps (display only)
+// ---------------------------------------------------------------------------
+let clock // { chainAt, localAt }: the latest block's time and when we saw it
+const chainSecondsNow = () => (clock ? clock.chainAt + (Date.now() - clock.localAt) / 1000 : Date.now() / 1000)
+const until = (deadline) => {
+  let s = Math.max(0, Math.round(Number(deadline) - chainSecondsNow()))
+  const d = Math.floor(s / 86400)
+  s -= d * 86400
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  const pad = (x) => String(x).padStart(2, "0")
+  return d ? `${d}d ${h}h ${pad(m)}m` : `${pad(h)}:${pad(m)}:${pad(sec)}`
+}
+
+function renderPhase() {
+  if (!state) return
+  const { phase, regEnd, vStart, vEnd } = state
+  const now = chainSecondsNow()
+  const pill = $("phasePill")
+  pill.classList.toggle("ended", phase === "ended")
+  $("phaseText").textContent =
+    phase === "registration" ? `Registration · closes in ${until(regEnd)}`
+    : phase === "frozen" ? `Voting opens in ${until(vStart)}`
+    : phase === "voting" ? `Voting · closes in ${until(vEnd)}`
+    : "Ended · final count"
+  const fmtDate = (s) => new Date(Number(s) * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+  const votingShare = Math.min(1, Math.max(0, (now - Number(vStart)) / Math.max(1, Number(vEnd) - Number(vStart))))
+  const seg = (label, sub, cls, fill) =>
+    `<div class="${cls}"><div class="track"><i style="width:${Math.round(fill * 100)}%"></i></div><span><b>${label}</b> · ${sub}</span></div>`
+  const order = ["registration", "frozen", "voting", "ended"].indexOf(phase)
+  $("timeline").innerHTML =
+    seg("Registration", `until ${fmtDate(regEnd)}`, order === 0 ? "now" : "done", 1) +
+    seg("Voting", `until ${fmtDate(vEnd)}`, order === 2 ? "now" : order > 2 ? "done" : "", order === 2 ? votingShare : order > 2 ? 1 : 0) +
+    seg("Result", order === 3 ? "final" : "after voting", order === 3 ? "now" : "", order === 3 ? 1 : 0)
+}
+
+// Ordered progress list for a long action. `at` is the step in progress (labels.length = all done).
+function showSteps(id, labels, at, failed = false) {
+  const el = $(id)
+  el.hidden = false
+  el.innerHTML = labels
+    .map((l, i) => {
+      const cls = i < at ? "done" : i === at ? (failed ? "failed" : "active") : ""
+      const timer = i === at && !failed ? `<span class="t" data-start="${Date.now()}"></span>` : ""
+      return `<li class="${cls}">${esc(l)}${timer}</li>`
+    })
+    .join("")
+}
+
+setInterval(() => {
+  if (state && !document.hidden) renderPhase()
+}, 1000)
+setInterval(() => {
+  for (const t of document.querySelectorAll(".progress [data-start]")) t.textContent = `${((Date.now() - Number(t.dataset.start)) / 1000).toFixed(1)}s`
+}, 100)
 
 // Reads that name the connected wallet go over the private channel, once per wallet,
 // not on every refresh over the direct RPC (R4-2). Cleared after registering.
@@ -224,19 +285,37 @@ async function _refresh() {
   const terms = state?.terms ?? { bounty: await election.relayBounty(), creator: await election.creator() }
   state = { title, cands, phase, regEnd, vStart, vEnd, minAnon, regCount, total, tally, funds, terms }
   if (account) Object.assign(state, await walletStatus(account))
-  const t = (s) => new Date(Number(s) * 1000).toLocaleString()
+  const t = (s) => new Date(Number(s) * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+  clock = { chainAt: Number(block.timestamp), localAt: Date.now() }
 
   $("title").textContent = title
+  document.title = `Goblett · ${title}`
+  $("elMeta").textContent = `${cfg.kind === "ranked" ? "Ranked choice" : "First past the post"} · ${cfg.chainName ?? "chain " + cfg.chainId}`
   $("info").innerHTML = `
-    <dt>Type</dt><dd>${cfg.kind === "ranked" ? "Ranked choice (instant runoff)" : "First past the post"}</dd>
-    <dt>Phase</dt><dd><b>${esc(phase)}</b></dd>
+    <dt>Contract</dt><dd>${cfg.explorerUrl ? `<a href="${cfg.explorerUrl}/address/${cfg.election}" target="_blank" rel="noopener">${cfg.election}</a>` : cfg.election}</dd>
     <dt>Chain time</dt><dd>${t(block.timestamp)}</dd>
-    <dt>Registration until</dt><dd>${t(regEnd)}</dd>
+    <dt>Registration</dt><dd>until ${t(regEnd)}</dd>
     <dt>Voting</dt><dd>${t(vStart)} → ${t(vEnd)}</dd>
-    <dt>Registered</dt><dd>${regCount} (voting needs ≥ ${minAnon})</dd>
-    <dt>Relayer funding</dt><dd>${fmt(funds)} left (bounty ${fmt(terms.bounty)} per registration/vote, plus gas)${funds === 0n ? ' <span class="err">— relayers may refuse to forward</span>' : ""}</dd>
-    <dt>Election</dt><dd>${cfg.explorerUrl ? `<a href="${cfg.explorerUrl}/address/${cfg.election}" target="_blank" rel="noopener">${cfg.election}</a>` : cfg.election} (${esc(cfg.chainName ?? "chain " + cfg.chainId)})</dd>`
+    <dt>Relayer funding</dt><dd>${fmt(funds)} left${funds === 0n ? ' <span class="err">· relayers may refuse to forward</span>' : ""}</dd>
+    <dt>Relayer bounty</dt><dd>${fmt(terms.bounty)} per registration or vote, plus gas</dd>
+    <dt>Creator</dt><dd>${terms.creator}</dd>`
   $("reclaimBtn").hidden = !(phase === "ended" && funds > 0n)
+
+  const n = (x) => Number(x).toLocaleString()
+  $("stats").innerHTML = `
+    <div><span class="k">Registered</span><span class="v">${n(regCount)}</span><span class="k">voting needs ${n(minAnon)}</span></div>
+    <div><span class="k">Votes cast</span><span class="v">${n(total)}</span><span class="k">${regCount > 0n ? Math.round((100 * Number(total)) / Number(regCount)) : 0}% turnout</span></div>
+    <div><span class="k">Anonymity set</span><span class="v">1 in ${n(regCount)}</span><span class="k">registered identities</span></div>
+    <div><span class="k">Relayer funding</span><span class="v">${Number(ethers.formatEther(funds)).toLocaleString(undefined, { maximumFractionDigits: 4 })} <small>${esc(sym())}</small></span><span class="k">left for gas + bounties</span></div>`
+  renderPhase()
+
+  // Show only what this phase needs; once it's over, the result leads.
+  const open = phase === "registration" || phase === "frozen"
+  $("register").hidden = !open
+  $("vote").hidden = phase !== "voting"
+  const resultsHome = phase === "ended" ? document.querySelector(".el-cols > .primary") : document.querySelector(".el-cols > aside")
+  if ($("results").parentElement !== resultsHome) resultsHome.prepend($("results"))
+  $("res-h").textContent = phase === "ended" ? "Result" : "Live tally"
 
   renderRegister()
   renderIdentities()
@@ -258,7 +337,7 @@ let eth // the EIP-1193 provider we talk to
 async function connect() {
   const mm = wallets.find((w) => w.info.rdns === "io.metamask") ?? wallets.find((w) => w.info.rdns?.startsWith("io.metamask"))
   eth = mm?.provider ?? window.ethereum
-  if (!eth) return log("MetaMask not found")
+  if (!eth) throw new Error("No wallet found. Install MetaMask, then reload.")
   log(`using wallet: ${mm ? mm.info.name : "window.ethereum"}${wallets.length > 1 ? ` (found ${wallets.map((w) => w.info.name).join(", ")})` : ""}`)
   const [acc] = await eth.request({ method: "eth_requestAccounts" })
   account = ethers.getAddress(acc)
@@ -331,8 +410,12 @@ function renderRegister() {
   btn.disabled = false
 }
 
+const REG_STEPS = ["Sign the registration in your wallet", "Send it privately to the relayers", "A relayer puts it on-chain"]
 async function register() {
   $("registerBtn").disabled = true
+  let at = 0
+  const progress = (i) => showSteps("regSteps", REG_STEPS, (at = i))
+  progress(0)
   let step = "check wallet network"
   try {
     // The wallet may stay on whatever network it is on (Ethereum, an L2, ...): an address
@@ -389,7 +472,8 @@ async function register() {
     // Double-check locally before bothering the relayer.
     if (ethers.verifyTypedData(domain, types, value, signature) !== account) throw new Error("signature does not match the connected wallet")
     step = "publish to Nostr"
-    setStatus("regStatus", "Publishing to Nostr…", "muted")
+    progress(1)
+    setStatus("regStatus", "")
     const sent = await publish(cfg, {
       type: "register",
       wallet: account,
@@ -399,15 +483,17 @@ async function register() {
     })
     log(`registration published${sent.private ? " through the private channel" : ""} to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
     step = "wait for a relayer to put it on-chain"
-    setStatus("regStatus", "Waiting for a relayer to put it on-chain…", "muted")
+    progress(2)
     const wallet = account
     const priv = await privateElection()
     const res = await confirm(cfg, sent.id, () => priv.hasRegistered(wallet))
+    progress(REG_STEPS.length)
     log(`registered on-chain${res.txHash ? `, tx ${res.txHash}` : ""}`)
     walletCache = undefined
     await refresh()
   } catch (e) {
     console.error(e)
+    showSteps("regSteps", REG_STEPS, at, true)
     setStatus("regStatus", `Registration failed at step "${step}": ${errMsg(e)}`, "err")
     $("registerBtn").disabled = false
     await walletDiagnostics(e, step)
@@ -453,8 +539,8 @@ function renderBallot() {
   const box = $("ballot")
   if (cfg.kind === "ranked") {
     box.innerHTML =
-      `<p class="muted">Click candidates in order of preference (you may stop early).</p>` +
-      state.cands.map((c, i) => `<label><input type="checkbox" data-i="${i}" /> <span class="rank" id="rank${i}"></span>${esc(c)}</label>`).join("")
+      `<p class="faint">Tap candidates in order of preference. You can stop early.</p>` +
+      state.cands.map((c, i) => `<label><input type="checkbox" data-i="${i}" /><span class="rank" id="rank${i}"></span>${esc(c)}</label>`).join("")
     box.querySelectorAll("input").forEach((el) =>
       el.addEventListener("change", () => {
         const i = Number(el.dataset.i)
@@ -506,15 +592,19 @@ function prefetchProofArtifacts() {
   for (const url of Object.values(PROOF_ARTIFACTS)) fetch(url, { cache: "force-cache" }).catch(() => {})
 }
 
+const VOTE_STEPS = ["Rebuild the voter group", "Make the zero-knowledge proof (10–30 s)", "Send it privately to the relayers", "Counted on Arc"]
 async function vote() {
   $("voteBtn").disabled = true
+  let at = 0
+  const progress = (i) => showSteps("voteSteps", VOTE_STEPS, (at = i))
   try {
     const { identity } = loadIdentities().find((x) => x.label === $("identitySel").value)
     if (localStorage.getItem(votedKey(identity.commitment))) {
       if (!confirm("This identity already voted from this browser. A second vote will be rejected. Continue?")) return
     }
     voteResultShown = true
-    setStatus("voteStatus", "Rebuilding the voter group from on-chain registrations…", "muted")
+    setStatus("voteStatus", "")
+    progress(0)
     // One call for the whole list (no event scan: Arc's RPC only serves small log ranges).
     const priv = await privateElection()
     const group = new Group([...(await priv.commitments())])
@@ -526,24 +616,26 @@ async function vote() {
     // another election's scope and get a proof that counts there (R3-4).
     const scope = BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["uint256", "address"], [cfg.chainId, cfg.election])))
     if (scope !== (await priv.scope())) throw new Error("This contract's scope does not match its address. It is not a genuine goblett election.")
-    setStatus("voteStatus", `Generating zero-knowledge proof (${group.size} registered)… ~10-30 s`, "muted")
+    progress(1)
     if (group.depth > PROOF_DEPTH) throw new Error(`groups deeper than ${PROOF_DEPTH} are not supported`)
     const proof = await generateProof(identity, group, message, scope, PROOF_DEPTH, PROOF_ARTIFACTS)
 
-    setStatus("voteStatus", "Publishing proof to Nostr…", "muted")
+    progress(2)
     const body = { proof: { ...proof, points: proof.points.map(String) } }
     if (cfg.kind === "ranked") body.ranking = ballot
     const sent = await publish(cfg, { type: "vote", ...body })
     log(`vote published${sent.private ? " through the private channel" : ""} to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
-    setStatus("voteStatus", "Waiting for a relayer to put it on-chain…", "muted")
+    progress(3)
     // Don't trust anyone's word: confirm() waits until the nullifier is used on-chain.
     const res = await confirm(cfg, sent.id, () => priv.nullifierUsed(proof.nullifier))
 
     localStorage.setItem(votedKey(identity.commitment), "1")
-    setStatus("voteStatus", `✓ Vote counted. Nullifier ${short(proof.nullifier)} is marked used on-chain.`, "ok")
+    progress(VOTE_STEPS.length)
+    setStatus("voteStatus", `Your vote is counted. Receipt: nullifier ${short(proof.nullifier)}, now marked used on-chain. Nothing links it to your wallet.`, "ok")
     log(`vote on-chain${res.txHash ? `, tx ${res.txHash}` : ""}`)
     await refresh()
   } catch (e) {
+    if (voteResultShown) showSteps("voteSteps", VOTE_STEPS, at, true)
     setStatus("voteStatus", `Vote failed: ${errMsg(e)}`, "err")
   } finally {
     updateVoteButton()
@@ -557,7 +649,10 @@ async function vote() {
 let username // of the connected wallet, if it has one
 
 function renderAccount() {
-  $("account").textContent = !account ? "not connected" : username ? `${username} (${account.slice(0, 6)}…${account.slice(-4)})` : account
+  const shortAcc = account && `${account.slice(0, 6)}…${account.slice(-4)}`
+  $("account").textContent = !account ? "" : username ? `${username} · ${shortAcc}` : shortAcc
+  $("account").title = account ?? ""
+  $("connect").hidden = !!account
   $("accountCard").hidden = !account
 }
 
@@ -643,7 +738,7 @@ function previewWhitelist() {
 // Create an election (deployed from the connected wallet, which pays the gas)
 // ---------------------------------------------------------------------------
 const recentKey = () => `goblett:elections:${cfg.chainId}`
-const electionUrl = (e) => `?election=${e.address}`
+const electionUrl = (e) => `/app.html?election=${e.address}${NETWORK ? "&network=" + NETWORK : ""}`
 const lines = (id) => $(id).value.split("\n").map((x) => x.trim()).filter(Boolean)
 // <input type="datetime-local"> works in local time without a zone: "2026-11-16T21:05".
 const toLocalInput = (unix) => {
@@ -657,9 +752,9 @@ const chainNow = async () => Math.max(...(await Promise.all([provider.getBlock("
 
 async function initCreateForm() {
   const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]")
-  $("recent").innerHTML = recent.length
-    ? "<p class='muted'>Elections created from this browser:</p>" + recent.map((e) => `<div><a href="${electionUrl(e)}">${esc(e.title)}</a> <span class="muted">${e.address}</span></div>`).join("")
-    : ""
+  $("recent").innerHTML = recent
+    .map((e) => `<a href="${esc(electionUrl(e))}">${esc(e.title)}<span>${esc(e.address.slice(0, 6))}…${esc(e.address.slice(-4))} →</span></a>`)
+    .join("")
   const now = await chainNow()
   $("newRegEnd").value = toLocalInput(now + 15 * 60)
   $("newVoteEnd").value = toLocalInput(now + 45 * 60)
@@ -785,20 +880,25 @@ async function createElection() {
 async function renderResults() {
   const total = Number(state.total)
   const label = cfg.kind === "ranked" ? "first preferences" : "votes"
-  let html = `<p class="muted">${total} vote(s). The live tally is public on-chain by design.</p>`
-  state.cands.forEach((c, i) => {
-    const n = Number(state.tally[i])
-    html += `<div>${esc(c)}: ${n} ${label}</div><div class="bar" style="width:${total ? (100 * n) / total : 0}%"></div>`
-  })
+  let head = ""
   if (state.phase === "ended") {
     try {
       const w = (await election.winners()).map((i) => state.cands[Number(i)])
-      html += `<p><b>${w.length > 1 ? "Tie: " : "Winner: "}${w.map(esc).join(", ")}</b></p>`
+      head = `<p class="winner">${w.length > 1 ? `Tie: ${w.map(esc).join(", ")}` : `${esc(w[0])} wins`}</p>`
     } catch (e) {
-      html += `<p class="err">winners() failed: ${esc(errMsg(e))}</p>`
+      head = `<p class="err">Couldn't read the winner: ${esc(errMsg(e))}</p>`
     }
   }
-  $("tally").innerHTML = html
+  const top = Math.max(0, ...state.tally.map(Number))
+  const rows = state.cands
+    .map((c, i) => {
+      const n = Number(state.tally[i])
+      const lead = top > 0 && n === top ? " lead" : ""
+      return `<div class="tline${lead}"><div>${esc(c)}<span>${n}</span></div><div class="track"><i style="width:${total ? (100 * n) / total : 0}%"></i></div></div>`
+    })
+    .join("")
+  const foot = `<p class="faint">${total} ${total === 1 ? label.replace(/s$/, "") : label}. ${state.phase === "ended" ? "Final, on-chain." : "Public on-chain by design; who voted for whom is not."}</p>`
+  $("tally").innerHTML = head + rows + foot
 }
 
 // ---------------------------------------------------------------------------
@@ -806,7 +906,11 @@ async function renderResults() {
 // ---------------------------------------------------------------------------
 const short = (x) => String(x).slice(0, 10) + "…"
 
-$("connect").onclick = () => connect().catch((e) => log(e.message))
+$("connect").onclick = () =>
+  connect().catch((e) => {
+    log(errMsg(e))
+    $("account").textContent = e.code === 4001 ? "Connection cancelled" : errMsg(e)
+  })
 $("registerBtn").onclick = register
 $("voteBtn").onclick = vote
 $("refresh").onclick = refresh

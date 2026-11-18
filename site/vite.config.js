@@ -33,4 +33,10 @@ function pagesFunctionsDev(env) {
 
 export default defineConfig(({ mode }) => ({
   plugins: [pagesFunctionsDev(loadEnv(mode, process.cwd(), ""))],
+  build: {
+    rollupOptions: {
+      // Two pages: the landing page and the app (election, create, account).
+      input: { main: "index.html", app: "app.html" },
+    },
+  },
 }))
