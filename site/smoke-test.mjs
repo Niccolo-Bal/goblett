@@ -28,7 +28,9 @@ const ABI = [
   "function owed(address) view returns (uint256)",
   "function relayFunds() view returns (uint256)",
 ]
-const cfg = JSON.parse(readFileSync(new URL("./public/election.json", import.meta.url)))
+// GOBLETT_NETWORK=local reads public/election.local.json (same convention as the relayer).
+const cfgFile = process.env.GOBLETT_NETWORK ? `election.${process.env.GOBLETT_NETWORK}.json` : "election.json"
+const cfg = JSON.parse(readFileSync(new URL(`./public/${cfgFile}`, import.meta.url)))
 // RPC_URL overrides the config's RPC (e.g. a local fork of a real chain). This test uses
 // anvil's public keys and moves the chain's clock, so it only ever runs against a local node.
 if (process.env.RPC_URL) cfg.rpcUrl = process.env.RPC_URL
@@ -63,12 +65,23 @@ console.log(`election ${cfg.election} (${cfg.kind}), phase ${await election.phas
 const domain = { name: "goblett Election", version: "1", chainId: cfg.chainId, verifyingContract: cfg.election }
 const types = { Register: [{ name: "wallet", type: "address" }, { name: "identityCommitment", type: "uint256" }] }
 const ids = []
-for (const k of KEYS) {
+// Wallet 0 signs on the election's chain (Register). Wallet 1 signs as if its wallet were
+// on Ethereum mainnet (RegisterOn), which is what the site does when MetaMask is on
+// another network.
+const onDomain = { name: "goblett Election", version: "1", chainId: 1 }
+const onTypes = { RegisterOn: [{ name: "wallet", type: "address" }, { name: "identityCommitment", type: "uint256" }, { name: "electionChainId", type: "uint256" }, { name: "election", type: "address" }] }
+for (const [i, k] of KEYS.entries()) {
   const w = new ethers.Wallet(k)
   const id = new Identity()
   ids.push(id)
-  const signature = await w.signTypedData(domain, types, { wallet: w.address, identityCommitment: id.commitment })
-  console.log("register", w.address, await post({ type: "register", wallet: w.address, identityCommitment: id.commitment, signature }, () => election.hasRegistered(w.address)))
+  const body = { type: "register", wallet: w.address, identityCommitment: id.commitment }
+  if (i === 0) {
+    body.signature = await w.signTypedData(domain, types, { wallet: w.address, identityCommitment: id.commitment })
+  } else {
+    body.signature = await w.signTypedData(onDomain, onTypes, { wallet: w.address, identityCommitment: id.commitment, electionChainId: cfg.chainId, election: cfg.election })
+    body.signingChainId = 1
+  }
+  console.log(i === 0 ? "register" : "register (signed on Ethereum)", w.address, await post(body, () => election.hasRegistered(w.address)))
 }
 console.log("bad sig ->", await post({ type: "register", wallet: new ethers.Wallet(KEYS[0]).address, identityCommitment: 5, signature: "0x" + "11".repeat(65) }, never))
 

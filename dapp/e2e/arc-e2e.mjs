@@ -206,8 +206,12 @@ async function main() {
     const owedNow = await election.owed(relayer.address)
     const spent = rf.fee + voteRcpt.fee
     console.log(`  relayer spent ${fmtUsdc(spent)}, is owed ${fmtUsdc(owedNow)} (2 bounties = ${fmtUsdc(2n * BOUNTY)})`)
-    check(owedNow >= spent, "relayer is owed at least the gas it paid")
-    check(owedNow <= spent + 2n * BOUNTY + ethers.parseEther("0.002"), "and not much more than gas + 2 bounties")
+    // The refund should match the gas actually paid closely: a relayer must not lose
+    // money on a relay, and the election must not overpay. (These two relays were this
+    // relayer's first and second credit, so both the fresh-slot and the steady case count.)
+    const refundPct = (owed, fees, bounties) => Number(((owed - bounties) * 10000n) / fees) / 100
+    const pct1 = refundPct(owedNow, spent, 2n * BOUNTY)
+    check(pct1 >= 97 && pct1 <= 103, `gas refund is ${pct1}% of the gas paid (must be within 3%)`)
     const balBeforeW = await provider.getBalance(relayer.address)
     const wRcpt = await (await election.connect(relayer).withdraw()).wait()
     check((await provider.getBalance(relayer.address)) === balBeforeW + owedNow - wRcpt.fee, "withdraw() pays the relayer exactly what it was owed")
@@ -229,14 +233,14 @@ async function main() {
     await expectRevert(election.connect(relayer).vote({ ...pOther, scope }, r1), "InvalidProof", "other-scope proof with scope field patched")
 
     // The untampered proof still works.
-    await (await election.connect(relayer).vote(p1, r1)).wait()
+    let laterFees = (await (await election.connect(relayer).vote(p1, r1)).wait()).fee
     ok("voter 1's original proof accepted after the failed tampering")
 
     // Voter 2 tries to vote twice with two different rankings: same nullifier.
     const p2a = await prove(2, [2, 0])
     const p2b = await prove(2, [1])
     check(p2a.nullifier === p2b.nullifier, "same identity + scope -> same nullifier regardless of ballot")
-    await (await election.connect(relayer).vote(p2a, [2, 0])).wait()
+    laterFees += (await (await election.connect(relayer).vote(p2a, [2, 0])).wait()).fee
     await expectRevert(election.connect(relayer).vote(p2b, [1]), "NullifierAlreadyUsed", "second vote with a different ranking")
 
     // Invalid ballots are rejected before the (expensive) proof check.
@@ -248,6 +252,10 @@ async function main() {
     console.log(`  full 3-candidate ranking: gas ${v3.gasUsed}`)
 
     // ------------------------------------------------------------------
+    laterFees += v3.fee
+    const pct2 = refundPct(await election.owed(relayer.address), laterFees, 3n * BOUNTY)
+    check(pct2 >= 97 && pct2 <= 103, `gas refund for the next three votes is ${pct2}% of the gas paid`)
+
     console.log("\n[5] Tally and instant runoff")
     // Ballots: [B,A] [A,C] [C,A] [A,B,C]. First preferences A2 B1 C1 of 4: no
     // majority. B and C tie for last and are eliminated together; their ballots

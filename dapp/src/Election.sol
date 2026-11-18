@@ -71,6 +71,16 @@ abstract contract Election {
     ///         No nonce: the domain binds the signature to this election, and each
     ///         wallet can register only once.
     bytes32 public constant REGISTER_TYPEHASH = keccak256("Register(address wallet,uint256 identityCommitment)");
+    /// @notice EIP-712 type for a registration signed while the wallet is on ANOTHER
+    ///         network (Ethereum, an L2, ...). Wallets refuse typed data whose domain
+    ///         chainId is not their active network, so that domain names the network the
+    ///         wallet is on, and the election's own chain and address move into the
+    ///         message. Same guarantees as Register: valid for this election only.
+    bytes32 public constant REGISTER_ON_TYPEHASH =
+        keccak256("RegisterOn(address wallet,uint256 identityCommitment,uint256 electionChainId,address election)");
+    /// @dev Domain of RegisterOn: no verifyingContract, because the election does not
+    ///      live on the chain the wallet is signing on.
+    bytes32 private constant _SIGNING_DOMAIN_TYPEHASH = keccak256("EIP712Domain(string name,string version,uint256 chainId)");
     bytes32 private constant _DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 private constant _NAME_HASH = keccak256("goblett Election");
@@ -103,17 +113,39 @@ abstract contract Election {
     ///         Has no other power: the election itself still has no admin.
     address public immutable creator;
 
-    /// @dev Added to the measured gas: what the transaction costs outside our
-    ///      measurement (21000 base, calldata, the credit's own storage write).
-    uint256 public constant REFUND_GAS_OVERHEAD = 40_000;
-    /// @dev Upper bound on refunded gas per call. registerFor runs code of a contract
-    ///      wallet (ERC-1271), which could burn gas on purpose to inflate a refund.
+    // What a relayed transaction costs OUTSIDE the span we can measure with gasleft():
+    // the 21000 every transaction pays, its calldata, and the credit's own bookkeeping
+    // (two storage writes and an event), which runs after the measurement is taken.
+    uint256 private constant _TX_BASE_GAS = 21_000;
+    /// @dev Calldata is 16 gas per non-zero byte and 4 per zero byte; we use 16 for all.
+    uint256 private constant _CALLDATA_GAS_PER_BYTE = 16;
+    /// @dev Calldata beyond this is not refunded. Trailing junk bytes are ignored by the
+    ///      ABI decoder, and zero bytes cost a relayer 4 gas but would be refunded at 16,
+    ///      so without a cap padding the calldata would pay. The longest honest call (a
+    ///      32-candidate ranked vote) is about 1500 bytes.
+    uint256 private constant _MAX_REFUND_CALLDATA = 1_600;
+    /// @dev Writing a storage slot that was zero costs 22100 gas (2100 cold access +
+    ///      20000), one that was already non-zero 5000. A relayer's first credit in an
+    ///      election writes two fresh slots (owed[relayer] and totalOwed), ~34k more
+    ///      than its later ones, so the two cases are refunded separately.
+    uint256 private constant _FRESH_SLOT_GAS = 22_100;
+    uint256 private constant _USED_SLOT_GAS = 5_000;
+    /// @dev The rest of the credit itself: the event and the arithmetic. Calibrated so
+    ///      that refund ~= gas actually paid (e2e/arc-e2e.mjs checks it stays within 3%).
+    uint256 private constant _CREDIT_GAS = 3_000;
+
+    /// @dev Upper bound on refunded gas per call, as a backstop. A registration costs
+    ///      about 230k gas plus ~32k per level of the Merkle tree (so ~500k with 500
+    ///      voters, ~600k with 1200), a vote 350k-500k.
     uint256 public constant MAX_REFUND_GAS = 1_000_000;
-    /// @dev Tighter cap for registerFor: an honest registration is ~210k gas, so a
-    ///      contract wallet can't burn up to MAX_REFUND_GAS in isValidSignature and
-    ///      drain relayFunds() ~4x faster than honest use (R3-7). Wallets that need more
-    ///      still register; the relayer is just refunded at most this much.
-    uint256 public constant MAX_REGISTER_REFUND_GAS = 300_000;
+    /// @dev registerFor runs the code of a contract wallet (ERC-1271), which could burn
+    ///      gas on purpose to inflate the relayer's refund and drain relayFunds() (R3-7).
+    ///      So the signature check is refunded only up to this much; the rest of the
+    ///      registration is refunded as measured. An EOA signature costs ~6k. A wallet
+    ///      that needs more can still register; its relayer is just not refunded for the
+    ///      excess. (This replaces a 300k cap on the whole registration, which
+    ///      under-refunded every honest registration once the tree was a few levels deep.)
+    uint256 public constant MAX_SIGNATURE_REFUND_GAS = 100_000;
 
     string public title;
     string[] internal _candidates;
@@ -223,11 +255,48 @@ abstract contract Election {
     ///        contract wallet accepts via ERC-1271.
     function registerFor(address wallet, uint256 identityCommitment, bytes calldata signature) external {
         uint256 gasStart = gasleft();
-        if (!_isValidSignature(wallet, registerDigest(wallet, identityCommitment), signature)) {
-            revert InvalidSignature();
-        }
+        _registerSigned(wallet, identityCommitment, registerDigest(wallet, identityCommitment), signature, gasStart);
+    }
+
+    /// @notice Like registerFor, for a wallet that signed while on another network.
+    ///         An address is the same on every EVM chain, so a whitelisted wallet does
+    ///         not need Arc added to it (or any funds anywhere) to register: it signs
+    ///         RegisterOn on whatever network it is on, and anyone relays it here.
+    /// @param signingChainId The chain id the wallet was on when it signed (the
+    ///        chainId of the signature's EIP-712 domain). It only selects which digest
+    ///        to check; a wrong value just makes the signature invalid.
+    function registerForSignedOn(
+        address wallet,
+        uint256 identityCommitment,
+        uint256 signingChainId,
+        bytes calldata signature
+    ) external {
+        uint256 gasStart = gasleft();
+        _registerSigned(
+            wallet, identityCommitment, registerDigestOn(wallet, identityCommitment, signingChainId), signature, gasStart
+        );
+    }
+
+    /// @dev Shared tail of registerFor / registerForSignedOn: check the signature,
+    ///      register, credit the relayer.
+    function _registerSigned(
+        address wallet,
+        uint256 identityCommitment,
+        bytes32 digest,
+        bytes calldata signature,
+        uint256 gasStart
+    ) internal {
+        uint256 gasBefore = gasleft();
+        bool valid = _isValidSignature(wallet, digest, signature);
+        uint256 signatureGas = gasBefore - gasleft();
+        if (!valid) revert InvalidSignature();
+
         _register(wallet, identityCommitment);
-        _creditRelayer(gasStart, MAX_REGISTER_REFUND_GAS);
+
+        // Leave the part of the signature check above MAX_SIGNATURE_REFUND_GAS out of the
+        // refund, by pretending the call started that much later.
+        if (signatureGas > MAX_SIGNATURE_REFUND_GAS) gasStart -= signatureGas - MAX_SIGNATURE_REFUND_GAS;
+        _creditRelayer(gasStart);
     }
 
     function _register(address wallet, uint256 identityCommitment) internal {
@@ -254,6 +323,21 @@ abstract contract Election {
     function registerDigest(address wallet, uint256 identityCommitment) public view returns (bytes32) {
         bytes32 structHash = keccak256(abi.encode(REGISTER_TYPEHASH, wallet, identityCommitment));
         return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
+    }
+
+    /// @notice The digest `wallet` signs, on the network `signingChainId`, to authorize
+    ///         registerForSignedOn. It commits to this election's chain and address, so
+    ///         it is worthless for any other election, including a contract at the same
+    ///         address on a different chain.
+    function registerDigestOn(address wallet, uint256 identityCommitment, uint256 signingChainId)
+        public
+        view
+        returns (bytes32)
+    {
+        bytes32 domain = keccak256(abi.encode(_SIGNING_DOMAIN_TYPEHASH, _NAME_HASH, _VERSION_HASH, signingChainId));
+        bytes32 structHash =
+            keccak256(abi.encode(REGISTER_ON_TYPEHASH, wallet, identityCommitment, block.chainid, address(this)));
+        return keccak256(abi.encodePacked("\x19\x01", domain, structHash));
     }
 
     /// @dev ECDSA for EOAs (low-s only, so each signature has one valid encoding),
@@ -324,8 +408,8 @@ abstract contract Election {
     // funds (e.g. blocklisted on Arc) can't make a vote fail.
     //
     // What a credit can cost the election is bounded: one per whitelisted wallet
-    // (registerFor, at most MAX_REGISTER_REFUND_GAS * maxRefundGasPrice + relayBounty)
-    // plus one per registered voter (vote, at most MAX_REFUND_GAS * maxRefundGasPrice + relayBounty). A voter may relay for themself
+    // (registerFor) plus one per registered voter (vote), each at most
+    // MAX_REFUND_GAS * maxRefundGasPrice + relayBounty. A voter may relay for themself
     // and collect the credit; that is fine.
 
     /// @notice Anyone can add relayer funding at any time.
@@ -342,12 +426,12 @@ abstract contract Election {
     ///      funding the credit is smaller or zero, and the call still succeeds: voting
     ///      must never depend on the funding.
     function _creditRelayer(uint256 gasStart) internal {
-        _creditRelayer(gasStart, MAX_REFUND_GAS);
-    }
-
-    function _creditRelayer(uint256 gasStart, uint256 maxGas) internal {
-        uint256 gasUsed = gasStart - gasleft() + REFUND_GAS_OVERHEAD;
-        if (gasUsed > maxGas) gasUsed = maxGas;
+        // Measured part, plus what the transaction costs outside the measurement.
+        uint256 calldataBytes = msg.data.length < _MAX_REFUND_CALLDATA ? msg.data.length : _MAX_REFUND_CALLDATA;
+        uint256 gasUsed = gasStart - gasleft() + _TX_BASE_GAS + calldataBytes * _CALLDATA_GAS_PER_BYTE + _CREDIT_GAS
+            + (owed[msg.sender] == 0 ? _FRESH_SLOT_GAS : _USED_SLOT_GAS)
+            + (totalOwed == 0 ? _FRESH_SLOT_GAS : _USED_SLOT_GAS);
+        if (gasUsed > MAX_REFUND_GAS) gasUsed = MAX_REFUND_GAS;
         uint256 price = tx.gasprice < maxRefundGasPrice ? tx.gasprice : maxRefundGasPrice;
 
         uint256 amount = gasUsed * price + relayBounty;
