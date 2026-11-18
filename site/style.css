@@ -65,9 +65,26 @@ body.home main { position: relative; z-index: 1; }
 body.home header {
   position: sticky;
   top: 0;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  z-index: 2;
+  background: var(--bg);
 }
-body.home main { max-width: 720px; align-content: start; padding-top: 56px; }
+body.home main { max-width: 1100px; align-content: start; padding-top: 56px; min-height: calc(100vh - 64px); }
+.assure {
+  position: relative;
+  z-index: 1;
+  background: #fff;
+  color: #1d1d1f;
+  padding: 80px 24px;
+}
+.pillars {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 32px;
+}
+.pillars h3 { margin: 0 0 8px; font-size: 20px; font-weight: 650; }
+.pillars p { margin: 0; font-size: 15px; line-height: 1.5; color: #3a3a3c; }
 .lede h2,
 .paths li { animation: rise 0.7s ease both; }
 .paths li:nth-child(2) { animation-delay: 0.12s; }
@@ -97,11 +114,10 @@ body.home main { max-width: 720px; align-content: start; padding-top: 56px; }
   .cycle { height: auto; }
   .cycle span { position: static; opacity: 1; display: block; }
 }
+.head-end { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+a.gh { display: inline-flex; color: var(--fg); }
+a.gh svg { width: 20px; height: 20px; display: block; }
 a.begin {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   background: #1d4ed8;
   color: #fff;
   text-decoration: none;
@@ -116,16 +132,23 @@ a.begin {
 }
 .lede h2 {
   margin: 0 0 12px;
-  max-width: 14em;
+  max-width: none;
+  white-space: nowrap;
   font-size: 44px;
   font-weight: 650;
   letter-spacing: -0.025em;
   line-height: 1.1;
 }
-.lede p { margin: 0; max-width: 28em; font-size: 17px; color: var(--muted); }
+.lede p { margin: 0; max-width: none; font-size: 17px; color: var(--muted); }
+.brand { display: flex; flex-direction: column; align-items: center; text-align: center; margin: 8px 0 28px; }
+.brand img { height: 220px; width: auto; }
+.brand p { margin: 8px 0 0; font-size: 32px; font-weight: 650; letter-spacing: -0.03em; }
+.signin { margin: 20px 0 72px; }
+.signin button { padding: 14px 32px; font-size: 18px; border-radius: 8px; }
+.signin p { margin: 12px 0 0; }
 nav { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 nav a { color: var(--fg); text-decoration: none; }
-.paths { list-style: none; margin: 40px 0 72px; padding: 0; border-top: 1px solid var(--border); }
+.paths { list-style: none; margin: 40px 0 0; padding: 0; border-top: 1px solid var(--border); }
 .paths a {
   display: grid;
   gap: 2px;
