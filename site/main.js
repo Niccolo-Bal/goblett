@@ -133,9 +133,10 @@ async function init() {
     // election.testnet.json. Same page and code either way.
     cfg = await (await fetch(`/election${NETWORK ? "." + NETWORK : ""}.json`, { cache: "no-store" })).json()
   } catch {
-    $("title").textContent = `Chain not set up${NETWORK ? ` for /${NETWORK}` : ""} (run relayer/setup_chain.py, then reload)`
+    setStatus("homeMsg", `This site isn't set up for ${NETWORK ? `/${NETWORK}` : "this network"} yet (run relayer/setup_chain.py, then reload).`, "err")
     return
   }
+  $("brand").href = NETWORK ? `/${NETWORK}` : "/"
   if (NETWORK) {
     $("network").textContent = cfg.chainName ?? NETWORK
     $("network").hidden = false
@@ -147,11 +148,7 @@ async function init() {
   // Which election? ?election=0x... in the URL, else the config's default (if any).
   const q = new URLSearchParams(location.search)
   const fromUrl = q.get("election")
-  if (!fromUrl && !cfg.election) {
-    $("title").textContent = "No election selected. Create one below."
-    $("createCard").open = true
-    return
-  }
+  if (!fromUrl && !cfg.election) return
   try {
     if (fromUrl) cfg.election = ethers.getAddress(fromUrl)
     // Verify before rendering anything the contract returns (R3-6): its runtime code
@@ -164,8 +161,7 @@ async function init() {
     cfg.kind = kind
     election = c
   } catch (e) {
-    $("title").textContent = `No goblett election at ${fromUrl ?? cfg.election} on chain ${cfg.chainId}. Create one below.`
-    $("createCard").open = true
+    setStatus("homeMsg", `That link doesn't point to a goblett election on ${cfg.chainName ?? "chain " + cfg.chainId}. Check the link you were sent, or start your own.`, "err")
     return
   }
   document.body.classList.add("has-election")
@@ -238,11 +234,55 @@ async function _refresh() {
     <dt>Election</dt><dd>${cfg.explorerUrl ? `<a href="${cfg.explorerUrl}/address/${cfg.election}" target="_blank" rel="noopener">${cfg.election}</a>` : cfg.election} (${esc(cfg.chainName ?? "chain " + cfg.chainId)})</dd>`
   $("reclaimBtn").hidden = !(phase === "ended" && funds > 0n)
 
+  renderPhase(Number(block.timestamp))
   renderRegister()
   renderIdentities()
+  renderKey()
   if (firstLoad) renderBallot()
   renderResults()
   updateVoteButton()
+}
+
+// "2 h 5 min", "3 d 4 h", "12 min": a rough countdown for the phase banner.
+function until(secs) {
+  if (secs <= 0) return "a moment"
+  if (secs < 3600) return `${Math.max(1, Math.round(secs / 60))} min`
+  const d = Math.floor(secs / 86400)
+  const h = Math.floor((secs % 86400) / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  return d ? `${d} d ${h} h` : `${h} h ${m} min`
+}
+
+// The step bar and the "what can I do now" line. The page shows only the cards that
+// matter in the current phase (style.css keys off body[data-phase]).
+function renderPhase(now) {
+  const { phase, regEnd, vStart, vEnd, regCount, minAnon } = state
+  document.body.dataset.phase = phase
+  const t = (s) => new Date(Number(s) * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+  const left = (end) => until(Number(end) - now)
+  const current = { registration: 0, frozen: 1, voting: 1, ended: 2 }[phase] ?? 0
+  const iRegistered = !!(account && state.registered) || loadIdentities().length > 0
+  ;["stepRegister", "stepVote", "stepResults"].forEach((id, i) => {
+    const done = i < current || (i === 0 && iRegistered)
+    $(id).className = done ? "done" : i === current ? "current" : ""
+    $(id).querySelector(".dot").textContent = i + 1
+  })
+  let head, sub
+  if (phase === "registration") {
+    head = iRegistered ? "You're registered." : "Registration is open."
+    sub = `Registration closes in ${left(regEnd)} (${t(regEnd)}), and voting opens then.`
+  } else if (phase === "frozen") {
+    head = "Registration has closed."
+    sub = `Voting opens in ${left(vStart)} (${t(vStart)}).`
+  } else if (phase === "voting") {
+    head = "Voting is open."
+    sub = `Voting closes in ${left(vEnd)} (${t(vEnd)}).`
+    if (regCount < minAnon) sub += ` Too few voters registered for votes to be accepted (${regCount} of ${minAnon} needed).`
+  } else {
+    head = "This election has ended."
+    sub = `Voting closed on ${t(vEnd)}.`
+  }
+  $("phaseNow").innerHTML = `<b>${esc(head)}</b> <span class="muted">${esc(sub)}</span>`
 }
 
 // ---------------------------------------------------------------------------
@@ -258,7 +298,7 @@ let eth // the EIP-1193 provider we talk to
 async function connect() {
   const mm = wallets.find((w) => w.info.rdns === "io.metamask") ?? wallets.find((w) => w.info.rdns?.startsWith("io.metamask"))
   eth = mm?.provider ?? window.ethereum
-  if (!eth) return log("MetaMask not found")
+  if (!eth) throw new Error("MetaMask wasn't found in this browser. Install it, then reload the page.")
   log(`using wallet: ${mm ? mm.info.name : "window.ethereum"}${wallets.length > 1 ? ` (found ${wallets.map((w) => w.info.name).join(", ")})` : ""}`)
   const [acc] = await eth.request({ method: "eth_requestAccounts" })
   account = ethers.getAddress(acc)
@@ -314,16 +354,26 @@ const errMsg = (e) => e?.error?.message ?? e?.info?.error?.message ?? e?.shortMe
 
 function renderRegister() {
   const btn = $("registerBtn")
+  if (registering) return // keep the progress message of a registration in flight
   btn.disabled = true
-  if (!account) return setStatus("regStatus", "Connect MetaMask to register.", "hint")
-  if (state.phase !== "registration") return setStatus("regStatus", `Registration is closed (phase: ${state.phase}).`, "hint")
-  if (state.walletErr) return setStatus("regStatus", `Could not check this wallet over the private channel: ${state.walletErr}`, "err")
-  if (!state.whitelisted) return setStatus("regStatus", `${account} is not on this election's whitelist.`, "err")
+  btn.textContent = "Register with MetaMask"
+  btn.hidden = false
+  if (state.phase !== "registration") return setStatus("regStatus", "Registration has closed.", "hint")
+  if (!account) {
+    btn.textContent = "Connect MetaMask"
+    btn.disabled = false
+    return setStatus("regStatus", "Start by connecting the wallet that's on the voter list.", "muted")
+  }
+  if (state.walletErr) return setStatus("regStatus", `Couldn't check your wallet privately right now (${state.walletErr}). It will retry in a few seconds.`, "err")
+  if (!state.whitelisted) {
+    return setStatus("regStatus", `This wallet (${account.slice(0, 6)}…${account.slice(-4)}) isn't on the voter list. If you have another wallet, switch to it in MetaMask.`, "err")
+  }
   if (state.registered) {
+    btn.hidden = true
     const local = loadIdentities().some((x) => x.label === account.toLowerCase())
     return setStatus(
       "regStatus",
-      local ? "✓ Registered. Your identity is stored in this browser." : "This wallet is registered, but its identity is not in this browser. Import the secret to vote.",
+      local ? "You're registered. Save your voter key below, then come back when voting opens." : "This wallet is already registered, but its voter key isn't in this browser. Load it below to vote.",
       local ? "ok" : "err"
     )
   }
@@ -331,8 +381,10 @@ function renderRegister() {
   btn.disabled = false
 }
 
+let registering = false
 async function register() {
   $("registerBtn").disabled = true
+  registering = true
   let step = "check wallet network"
   try {
     // The wallet may stay on whatever network it is on (Ethereum, an L2, ...): an address
@@ -371,7 +423,7 @@ async function register() {
       : { wallet: account, identityCommitment: identity.commitment, electionChainId: cfg.chainId, election: cfg.election }
     // Ask MetaMask directly (not via ethers' signer) so its own error message reaches the page.
     const payload = ethers.TypedDataEncoder.getPayload(domain, types, value)
-    setStatus("regStatus", "Sign the registration in MetaMask…", "muted")
+    setStatus("regStatus", "Approve the request in MetaMask. It's a free signature, not a transaction.", "muted")
     step = "sign (eth_signTypedData_v4)"
     const sign = () => eth.request({ method: "eth_signTypedData_v4", params: [account.toLowerCase(), JSON.stringify(payload)] })
     let signature
@@ -389,7 +441,7 @@ async function register() {
     // Double-check locally before bothering the relayer.
     if (ethers.verifyTypedData(domain, types, value, signature) !== account) throw new Error("signature does not match the connected wallet")
     step = "publish to Nostr"
-    setStatus("regStatus", "Publishing to Nostr…", "muted")
+    setStatus("regStatus", "Sending your registration…", "muted")
     const sent = await publish(cfg, {
       type: "register",
       wallet: account,
@@ -399,16 +451,19 @@ async function register() {
     })
     log(`registration published${sent.private ? " through the private channel" : ""} to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
     step = "wait for a relayer to put it on-chain"
-    setStatus("regStatus", "Waiting for a relayer to put it on-chain…", "muted")
+    setStatus("regStatus", "Recording your registration on-chain. This usually takes under a minute…", "muted")
     const wallet = account
     const priv = await privateElection()
     const res = await confirm(cfg, sent.id, () => priv.hasRegistered(wallet))
     log(`registered on-chain${res.txHash ? `, tx ${res.txHash}` : ""}`)
     walletCache = undefined
+    registering = false
     await refresh()
+    $("keyCard").scrollIntoView({ behavior: "smooth", block: "start" })
   } catch (e) {
     console.error(e)
-    setStatus("regStatus", `Registration failed at step "${step}": ${errMsg(e)}`, "err")
+    registering = false
+    setStatus("regStatus", `Registration didn't go through: ${errMsg(e)} (step: ${step}; details in the activity log)`, "err")
     $("registerBtn").disabled = false
     await walletDiagnostics(e, step)
   }
@@ -445,16 +500,102 @@ function renderIdentities() {
   const ids = loadIdentities()
   sel.innerHTML = ids.length
     ? ids.map((x) => `<option value="${esc(x.label)}">${esc(x.label.startsWith("0x") ? "registered by " + x.label.slice(0, 10) + "…" : x.label)}</option>`).join("")
-    : `<option value="">(no identity in this browser)</option>`
+    : `<option value="">(no voter key in this browser)</option>`
   if (ids.some((x) => x.label === prev)) sel.value = prev
+}
+
+// ---------------------------------------------------------------------------
+// Voter key backup. The key never leaves the browser except as a file or clipboard
+// copy the voter makes themselves.
+// ---------------------------------------------------------------------------
+const savedKey = (commitment) => `goblett:saved:${cfg.election.toLowerCase()}:${commitment}`
+const selectedIdentity = () => loadIdentities().find((x) => x.label === $("identitySel").value)
+let keyCardHadKey // so the import box opens by itself only when the card first has no key
+
+function renderKey() {
+  const ids = loadIdentities()
+  const has = ids.length > 0
+  $("keyCard").hidden = state.phase === "ended" || (!has && state.phase === "registration" && !(account && state.registered))
+  $("keyBody").hidden = !has
+  $("identityLabel").hidden = ids.length < 2
+  if (keyCardHadKey !== has) $("importBox").open = !has
+  keyCardHadKey = has
+  const x = selectedIdentity()
+  const saved = !!(x && localStorage.getItem(savedKey(x.identity.commitment)))
+  $("keyCard").classList.toggle("warn", has && !saved)
+  $("keyCard").querySelector("h2").textContent = has && !saved ? "Save your voter key" : "Your voter key"
+  $("savedKey").checked = saved
+  if (saved) $("savedKey").disabled = false
+}
+
+// The "I've saved it" box unlocks once the voter has downloaded, copied or shown the key.
+function keyHandled(msg) {
+  $("savedKey").disabled = false
+  setStatus("keyStatus", msg, "muted")
+}
+
+function downloadKey() {
+  const x = selectedIdentity()
+  if (!x) return
+  const url = URL.createObjectURL(new Blob([x.identity.export() + "\n"], { type: "text/plain" }))
+  const a = Object.assign(document.createElement("a"), { href: url, download: `goblett-voter-key-${cfg.election.slice(2, 8).toLowerCase()}.txt` })
+  a.click()
+  URL.revokeObjectURL(url)
+  keyHandled("Downloaded. Keep the file somewhere private; you'll need it if you vote from another browser.")
+}
+
+async function copyKey() {
+  const x = selectedIdentity()
+  if (!x) return
+  try {
+    await navigator.clipboard.writeText(x.identity.export())
+    keyHandled("Copied. Paste it somewhere private, like a password manager.")
+  } catch {
+    setStatus("keyStatus", "Couldn't copy automatically. Use Show key and copy it yourself.", "err")
+  }
+}
+
+function toggleShowKey() {
+  const pre = $("exported")
+  const x = selectedIdentity()
+  pre.hidden = !pre.hidden || !x
+  pre.textContent = pre.hidden ? "" : x.identity.export()
+  $("exportBtn").textContent = pre.hidden ? "Show key" : "Hide key"
+  if (!pre.hidden) keyHandled("Don't share this or show it on screen to anyone.")
+}
+
+async function importKey() {
+  try {
+    const file = $("importFile").files[0]
+    const text = file ? (await file.text()).trim() : $("importTxt").value.trim()
+    if (!text) throw new Error("choose your key file or paste your key first")
+    const identity = Identity.import(text)
+    saveIdentity(account ?? "imported-" + identity.commitment.toString().slice(0, 8), identity)
+    localStorage.setItem(savedKey(identity.commitment), "1") // it came from a backup
+    $("importTxt").value = ""
+    $("importFile").value = ""
+    $("importBox").open = false
+    setStatus("importStatus", "")
+    log(`imported identity ${short(identity.commitment)}`)
+    await refresh()
+    setStatus("keyStatus", "Voter key loaded.", "ok")
+  } catch (e) {
+    setStatus("importStatus", `That doesn't look like a voter key: ${errMsg(e)}`, "err")
+  }
 }
 
 function renderBallot() {
   const box = $("ballot")
   if (cfg.kind === "ranked") {
     box.innerHTML =
-      `<p class="muted">Click candidates in order of preference (you may stop early).</p>` +
-      state.cands.map((c, i) => `<label><input type="checkbox" data-i="${i}" /> <span class="rank" id="rank${i}"></span>${esc(c)}</label>`).join("")
+      `<div class="ranked-tools"><p class="muted">Tap in order of preference: 1st, 2nd, … You can stop early.</p><button class="link" id="rankReset">Start over</button></div>` +
+      state.cands.map((c, i) => `<label class="choice"><input type="checkbox" data-i="${i}" /><span class="mark" id="rank${i}"></span>${esc(c)}</label>`).join("")
+    $("rankReset").onclick = () => {
+      ranking = []
+      box.querySelectorAll("input").forEach((el) => (el.checked = false))
+      state.cands.forEach((_, j) => ($(`rank${j}`).textContent = ""))
+      updateVoteButton()
+    }
     box.querySelectorAll("input").forEach((el) =>
       el.addEventListener("change", () => {
         const i = Number(el.dataset.i)
@@ -464,7 +605,7 @@ function renderBallot() {
       })
     )
   } else {
-    box.innerHTML = state.cands.map((c, i) => `<label><input type="radio" name="cand" value="${i}" /> ${esc(c)}</label>`).join("")
+    box.innerHTML = state.cands.map((c, i) => `<label class="choice"><input type="radio" name="cand" value="${i}" /><span class="mark"></span>${esc(c)}</label>`).join("")
     box.querySelectorAll("input").forEach((el) => el.addEventListener("change", updateVoteButton))
   }
 }
@@ -478,18 +619,78 @@ function selectedBallot() {
 // Explain why the vote button is disabled, unless a vote result is being shown.
 let voteResultShown = false
 function updateVoteButton() {
+  const x = selectedIdentity()
+  const voted = !!(x && localStorage.getItem(votedKey(x.identity.commitment)))
   const why =
-    state.phase !== "voting"
-      ? `Voting is not open (phase: ${state.phase}).`
-      : state.regCount < state.minAnon
-        ? `Too few registrations (${state.regCount} of ${state.minAnon} needed).`
-        : !$("identitySel").value
-          ? "No identity for this election in this browser. Register first, or import your secret."
-          : selectedBallot() === null
-            ? "Pick a candidate."
-            : ""
-  $("voteBtn").disabled = !!why
-  if (!voteResultShown) setStatus("voteStatus", why, "hint")
+    state.phase === "ended"
+      ? "Voting has closed."
+      : state.phase !== "voting"
+        ? "Voting hasn't opened yet."
+        : state.regCount < state.minAnon
+          ? `Too few voters registered for votes to be accepted (${state.regCount} of ${state.minAnon} needed).`
+          : !x
+            ? "Your voter key isn't in this browser. Load it under “Your voter key” above."
+            : voted
+              ? "You've already voted with this key."
+              : selectedBallot() === null
+                ? cfg.kind === "ranked"
+                  ? "Pick candidates in your order of preference."
+                  : "Pick a candidate."
+                : ""
+  $("voteBtn").disabled = !!why || votingNow
+  if (!voteResultShown) setStatus("voteStatus", why, voted ? "ok" : "hint")
+  if (!votingNow) {
+    // Already voted with this key: show the box with the token in it instead of the ballot.
+    $("ballot").hidden = voted
+    $("voteBtn").hidden = voted
+    if (voted) sealState("counted", "sealed", { instant: true })
+    else $("sealer").hidden = true
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The sealing animation shown while a vote is cast (states styled in style.css).
+// The hex on the token is decorative and random: it is never the proof or the
+// nullifier, which are public on-chain next to the ballot and would reveal the
+// vote to anyone who sees this screen.
+// ---------------------------------------------------------------------------
+const randHex = (n) => Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("")
+const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches
+const SEAL_STEP = { ready: -1, sealing: 0, sealed: 0, dropping: 1, inbox: 2, counted: 4, failed: -1 }
+
+function sealState(stateName, text, { instant = false } = {}) {
+  const el = $("sealer")
+  if (instant) el.classList.add("instant")
+  el.hidden = false
+  el.dataset.state = stateName
+  if (text !== undefined) $("sealText").textContent = text
+  const at = SEAL_STEP[stateName]
+  $("sealSteps").querySelectorAll("li").forEach((li, i) => (li.className = i < at ? "done" : i === at ? "current" : ""))
+  $("sealBoxLabel").textContent = stateName === "counted" ? "Counted" : stateName === "inbox" ? "Recording" : "Ballot box"
+  if (instant) requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("instant")))
+}
+
+// The choice turns into hex letter by letter, then keeps cycling while the proof is built.
+let scrambleTimer
+function scramble(from) {
+  clearInterval(scrambleTimer)
+  const len = Math.min(Math.max(from.length, 14), 22)
+  const src = from.padEnd(len).slice(0, len)
+  let n = 0
+  scrambleTimer = setInterval(() => {
+    n = Math.min(len, n + 1)
+    $("sealText").textContent = randHex(n) + src.slice(n)
+  }, 45)
+}
+function stopScramble(final) {
+  clearInterval(scrambleTimer)
+  if (final !== undefined) $("sealText").textContent = final
+}
+
+function choiceLabel(ballot) {
+  if (cfg.kind !== "ranked") return state.cands[ballot]
+  return ballot.map((c, i) => `${i + 1}. ${state.cands[c]}`).join("   ")
 }
 
 // Same encoding as RankedChoiceElection.packRanking: byte i = ranking[i] + 1.
@@ -506,46 +707,62 @@ function prefetchProofArtifacts() {
   for (const url of Object.values(PROOF_ARTIFACTS)) fetch(url, { cache: "force-cache" }).catch(() => {})
 }
 
+let votingNow = false // a vote in flight: refreshes must not re-enable the button
 async function vote() {
   $("voteBtn").disabled = true
+  votingNow = true
   try {
-    const { identity } = loadIdentities().find((x) => x.label === $("identitySel").value)
-    if (localStorage.getItem(votedKey(identity.commitment))) {
-      if (!confirm("This identity already voted from this browser. A second vote will be rejected. Continue?")) return
-    }
+    const { identity } = selectedIdentity()
+    const ballot = selectedBallot()
     voteResultShown = true
-    setStatus("voteStatus", "Rebuilding the voter group from on-chain registrations…", "muted")
+    $("ballot").hidden = true
+    $("voteBtn").hidden = true
+    sealState("ready", choiceLabel(ballot))
+    setStatus("voteStatus", "Checking the voter list…", "muted")
     // One call for the whole list (no event scan: Arc's RPC only serves small log ranges).
     const priv = await privateElection()
     const group = new Group([...(await priv.commitments())])
-    if (group.indexOf(identity.commitment) < 0) throw new Error("this identity is not registered in this election")
+    if (group.indexOf(identity.commitment) < 0) throw new Error("this voter key isn't registered in this election")
 
-    const ballot = selectedBallot()
     const message = cfg.kind === "ranked" ? pack(ballot) : BigInt(ballot)
     // Bind the proof to this address: a look-alike contract could otherwise return
     // another election's scope and get a proof that counts there (R3-4).
     const scope = BigInt(ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["uint256", "address"], [cfg.chainId, cfg.election])))
     if (scope !== (await priv.scope())) throw new Error("This contract's scope does not match its address. It is not a genuine goblett election.")
-    setStatus("voteStatus", `Generating zero-knowledge proof (${group.size} registered)… ~10-30 s`, "muted")
+    setStatus("voteStatus", "Preparing your anonymous ballot. This takes 10–30 seconds; keep this tab open…", "muted")
+    log(`generating proof over ${group.size} registered voters`)
     if (group.depth > PROOF_DEPTH) throw new Error(`groups deeper than ${PROOF_DEPTH} are not supported`)
+    sealState("sealing")
+    scramble(choiceLabel(ballot))
+    // Let the letters visibly turn to ciphertext before the proof takes over the CPU.
+    if (!reducedMotion()) await wait(900)
     const proof = await generateProof(identity, group, message, scope, PROOF_DEPTH, PROOF_ARTIFACTS)
+    stopScramble(`0x${randHex(4)}…${randHex(4)}`)
+    sealState("sealed")
+    if (!reducedMotion()) await wait(600)
 
-    setStatus("voteStatus", "Publishing proof to Nostr…", "muted")
+    setStatus("voteStatus", "Sending your sealed ballot…", "muted")
     const body = { proof: { ...proof, points: proof.points.map(String) } }
     if (cfg.kind === "ranked") body.ranking = ballot
-    const sent = await publish(cfg, { type: "vote", ...body })
+    sealState("dropping")
+    const [sent] = await Promise.all([publish(cfg, { type: "vote", ...body }), wait(reducedMotion() ? 0 : 1200)])
     log(`vote published${sent.private ? " through the private channel" : ""} to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
-    setStatus("voteStatus", "Waiting for a relayer to put it on-chain…", "muted")
+    sealState("inbox")
+    setStatus("voteStatus", "Recording your vote on-chain. This usually takes under a minute…", "muted")
     // Don't trust anyone's word: confirm() waits until the nullifier is used on-chain.
     const res = await confirm(cfg, sent.id, () => priv.nullifierUsed(proof.nullifier))
 
     localStorage.setItem(votedKey(identity.commitment), "1")
-    setStatus("voteStatus", `✓ Vote counted. Nullifier ${short(proof.nullifier)} is marked used on-chain.`, "ok")
-    log(`vote on-chain${res.txHash ? `, tx ${res.txHash}` : ""}`)
+    sealState("counted")
+    setStatus("voteStatus", "Your vote was counted.", "ok")
+    log(`vote on-chain, nullifier ${short(proof.nullifier)} marked used${res.txHash ? `, tx ${res.txHash}` : ""}`)
     await refresh()
   } catch (e) {
-    setStatus("voteStatus", `Vote failed: ${errMsg(e)}`, "err")
+    stopScramble()
+    $("sealer").hidden = true // back to the ballot so they can try again
+    setStatus("voteStatus", `Your vote didn't go through: ${errMsg(e)}`, "err")
   } finally {
+    votingNow = false
     updateVoteButton()
   }
 }
@@ -559,6 +776,7 @@ let username // of the connected wallet, if it has one
 function renderAccount() {
   $("account").textContent = !account ? "not connected" : username ? `${username} (${account.slice(0, 6)}…${account.slice(-4)})` : account
   $("accountCard").hidden = !account
+  $("connect").hidden = !!account
 }
 
 // The username lookup sends the wallet address to goblett's server over a direct
@@ -595,7 +813,7 @@ async function saveUsername() {
     setStatus("accountStatus", "Sign the username in MetaMask…", "muted")
     const saved = await claimUsername(eth, account, wanted)
     username = saved.username
-    setStatus("accountStatus", `✓ Your username is ${saved.username}.`, "ok")
+    setStatus("accountStatus", `Your username is ${saved.username}.`, "ok")
     renderAccount()
   } catch (e) {
     setStatus("accountStatus", `Could not save the username: ${errMsg(e)}`, "err")
@@ -658,11 +876,13 @@ const chainNow = async () => Math.max(...(await Promise.all([provider.getBlock("
 async function initCreateForm() {
   const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]")
   $("recent").innerHTML = recent.length
-    ? "<p class='muted'>Elections created from this browser:</p>" + recent.map((e) => `<div><a href="${electionUrl(e)}">${esc(e.title)}</a> <span class="muted">${e.address}</span></div>`).join("")
+    ? "<h3>Your elections</h3><div class='recent-list'>" +
+      recent.map((e) => `<a class="recent-item" href="${electionUrl(e)}">${esc(e.title)} <span>${e.address.slice(0, 6)}…${e.address.slice(-4)} →</span></a>`).join("") +
+      "</div>"
     : ""
   const now = await chainNow()
-  $("newRegEnd").value = toLocalInput(now + 15 * 60)
-  $("newVoteEnd").value = toLocalInput(now + 45 * 60)
+  createClock = { chain: now, local: Date.now() }
+  setRegDuration(regSecs)
   // Relayer payment defaults: refund gas up to twice today's price.
   const price = await gasPriceNow()
   $("newMaxGasPrice").value = Math.ceil(Number(ethers.formatUnits(2n * price, "gwei")))
@@ -673,6 +893,237 @@ async function initCreateForm() {
 }
 
 const sym = () => cfg.nativeCurrency?.symbol ?? ""
+
+// ---------------------------------------------------------------------------
+// Create wizard: four tap-through steps. Every tap writes into the plain inputs
+// (newTitle, newKind, newCands, newWhitelist, newRegEnd, newVoteEnd, ...) that
+// createElection() reads, so the deployment logic is unchanged.
+// ---------------------------------------------------------------------------
+let createClock // { chain, local }: the chain's clock when the form opened
+const chainNowEstimate = () => (createClock ? createClock.chain + Math.floor((Date.now() - createClock.local) / 1000) : Math.floor(Date.now() / 1000))
+let regSecs = 900
+let voteSecs = 1800
+let wizStep = 0
+let votersMode = null // "me" | "group"
+
+const PRESETS = {
+  yesno: { title: "", placeholder: "Should we …?", kind: "fptp", cands: ["Yes", "No"] },
+  yesnoabstain: { title: "", placeholder: "Should we …?", kind: "fptp", cands: ["Yes", "No", "Abstain"] },
+  president: { title: `Club president ${new Date().getFullYear()}`, kind: "fptp", cands: [] },
+  rank: { title: "", placeholder: "e.g. Where should the trip go?", kind: "ranked", cands: [] },
+}
+
+function showCreate(on = true) {
+  document.body.classList.toggle("creating", on)
+  if (on) {
+    goStep(0)
+    window.scrollTo({ top: 0 })
+  }
+}
+
+function goStep(i) {
+  wizStep = i
+  document.querySelectorAll(".wiz-step").forEach((el) => el.classList.toggle("current", Number(el.dataset.step) === i))
+  $("wizSteps").querySelectorAll("li").forEach((li, j) => (li.className = j < i ? "done" : j === i ? "current" : ""))
+  $("wizPrev").style.visibility = i === 0 ? "hidden" : "visible"
+  $("wizNext").hidden = i === 3
+  $("wizError").textContent = ""
+  if (i === 3) renderReview()
+}
+
+function stepError(i) {
+  if (i === 0) {
+    const cands = lines("newCands")
+    if (!$("newTitle").value.trim()) return "Give your election a title."
+    if (cands.length < 2) return "Add at least two choices."
+  }
+  if (i === 1) {
+    if (!votersMode) return "Choose who can vote."
+    if (votersMode === "group" && !lines("newWhitelist").length) return "Add at least one voter."
+  }
+  if (i === 2 && !(fromLocalInput($("newVoteEnd").value) > fromLocalInput($("newRegEnd").value))) return "Voting must end after sign-up ends."
+  return ""
+}
+
+function setKind(kind) {
+  $("newKind").value = kind
+  $("kindChoices").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.kind === kind))
+}
+
+// A list of removable tags backed by a hidden one-per-line textarea.
+function renderTags(boxId, textareaId, show = (x) => x) {
+  const items = lines(textareaId)
+  $(boxId).innerHTML = items.map((x, i) => `<span class="tag"><span>${esc(show(x))}</span><button data-i="${i}" title="Remove">×</button></span>`).join("")
+  $(boxId).querySelectorAll("button").forEach((b) => {
+    b.onclick = () => {
+      $(textareaId).value = items.filter((_, j) => j !== Number(b.dataset.i)).join("\n")
+      $(textareaId).dispatchEvent(new Event("input"))
+      renderTags(boxId, textareaId, show)
+    }
+  })
+}
+function addTags(textareaId, entries) {
+  const have = lines(textareaId)
+  const add = entries.map((x) => x.trim()).filter((x) => x && !have.some((h) => h.toLowerCase() === x.toLowerCase()))
+  $(textareaId).value = [...have, ...add].join("\n")
+  $(textareaId).dispatchEvent(new Event("input"))
+  return add.length
+}
+const renderCands = () => renderTags("candChips", "newCands")
+const shortAddr = (x) => (ethers.isAddress(x) ? `${x.slice(0, 6)}…${x.slice(-4)}` : x)
+const renderVoters = () => renderTags("voterChips", "newWhitelist", shortAddr)
+
+function addCand() {
+  const v = $("candInput").value
+  if (addTags("newCands", [v])) renderCands()
+  $("candInput").value = ""
+  $("candInput").focus()
+}
+function addVoter(entries) {
+  const n = addTags("newWhitelist", entries)
+  renderVoters()
+  return n
+}
+
+function setVotersMode(mode) {
+  votersMode = mode
+  $("voterChoices").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.voters === mode))
+  $("voterGroup").hidden = mode !== "group"
+  if (mode === "me") {
+    $("newWhitelist").value = ""
+    $("newWhitelist").dispatchEvent(new Event("input"))
+    renderVoters()
+  }
+}
+
+function setRegDuration(secs) {
+  regSecs = secs
+  $("newRegEnd").value = toLocalInput(chainNowEstimate() + secs)
+  setVoteDuration(voteSecs)
+}
+function setVoteDuration(secs) {
+  voteSecs = secs
+  $("newVoteEnd").value = toLocalInput(fromLocalInput($("newRegEnd").value) + secs)
+  renderSchedule()
+}
+function renderSchedule() {
+  const mark = (id, secs) => $(id).querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", Number(c.dataset.secs) === secs))
+  mark("regChips", regSecs)
+  mark("voteChips", voteSecs)
+  const f = (v) => new Date(v).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+  $("schedulePreview").innerHTML = `<div><span>Sign-up closes</span><b>${esc(f($("newRegEnd").value))}</b></div><div><span>Voting closes</span><b>${esc(f($("newVoteEnd").value))}</b></div>`
+}
+
+function renderReview() {
+  const cands = lines("newCands")
+  const voters = lines("newWhitelist")
+  const f = (v) => new Date(v).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+  $("review").innerHTML = `
+    <dt>Title</dt><dd><b>${esc($("newTitle").value.trim())}</b></dd>
+    <dt>Voting style</dt><dd>${$("newKind").value === "ranked" ? "Rank the choices" : "Pick one"}</dd>
+    <dt>Choices</dt><dd>${cands.map(esc).join(", ")}</dd>
+    <dt>Voters</dt><dd>${votersMode === "group" ? `${voters.length} voter${voters.length === 1 ? "" : "s"}` : "Just you"}</dd>
+    <dt>Sign-up ends</dt><dd>${esc(f($("newRegEnd").value))}</dd>
+    <dt>Voting ends</dt><dd>${esc(f($("newVoteEnd").value))}</dd>
+    <dt>Upfront cost</dt><dd>≈ ${esc(Number($("newFunding").value || 0).toLocaleString(undefined, { maximumFractionDigits: 4 }))} ${esc(sym())} + setup fee</dd>`
+}
+
+function wireWizard() {
+  $("createTile").onclick = () => showCreate(true)
+  $("startOwnBtn").onclick = () => showCreate(true)
+  $("createCancel").onclick = () => showCreate(false)
+  $("wizPrev").onclick = () => goStep(Math.max(0, wizStep - 1))
+  $("wizNext").onclick = () => {
+    const err = stepError(wizStep)
+    if (err) return ($("wizError").textContent = err)
+    goStep(wizStep + 1)
+  }
+  $("presetChips").querySelectorAll(".chip").forEach((b) => {
+    b.onclick = () => {
+      const p = PRESETS[b.dataset.preset]
+      $("presetChips").querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c === b))
+      $("newTitle").value = p.title
+      $("newTitle").placeholder = p.placeholder ?? "e.g. Club president 2026"
+      setKind(p.kind)
+      $("newCands").value = p.cands.join("\n")
+      renderCands()
+      ;(p.title ? $("candInput") : $("newTitle")).focus()
+    }
+  })
+  $("kindChoices").querySelectorAll("button").forEach((b) => (b.onclick = () => setKind(b.dataset.kind)))
+  $("candAdd").onclick = addCand
+  $("candInput").onkeydown = (e) => e.key === "Enter" && (e.preventDefault(), addCand())
+  $("voterChoices").querySelectorAll("button").forEach((b) => (b.onclick = () => setVotersMode(b.dataset.voters)))
+  $("voterAdd").onclick = () => {
+    addVoter([$("voterInput").value])
+    $("voterInput").value = ""
+    $("voterInput").focus()
+  }
+  $("voterInput").onkeydown = (e) => e.key === "Enter" && (e.preventDefault(), $("voterAdd").click())
+  $("pasteVoters").onclick = async () => {
+    try {
+      const n = addVoter((await navigator.clipboard.readText()).split(/[\s,;]+/))
+      setStatus("whitelistPreview", n ? `Added ${n} voter${n === 1 ? "" : "s"}.` : "Nothing new to add from the clipboard.", "muted")
+    } catch {
+      setStatus("whitelistPreview", "Couldn't read the clipboard. Type or paste into the box below instead.", "err")
+      $("voterInput").focus()
+    }
+  }
+  $("regChips").querySelectorAll(".chip").forEach((c) => (c.onclick = () => setRegDuration(Number(c.dataset.secs))))
+  $("voteChips").querySelectorAll(".chip").forEach((c) => (c.onclick = () => setVoteDuration(Number(c.dataset.secs))))
+  for (const id of ["newRegEnd", "newVoteEnd"]) {
+    $(id).addEventListener("input", () => {
+      regSecs = voteSecs = 0
+      renderSchedule()
+    })
+  }
+  setKind("fptp")
+  setRegDuration(regSecs)
+}
+
+// ---------------------------------------------------------------------------
+// Home: open an election from a link
+// ---------------------------------------------------------------------------
+function openElection(text) {
+  const t = text.trim()
+  const m = t.match(/0x[0-9a-fA-F]{40}/)
+  if (!m || !ethers.isAddress(m[0])) return setStatus("joinStatus", "That doesn't look like a goblett link. It should contain an address starting with 0x.", "err")
+  location.search = `?election=${ethers.getAddress(m[0])}`
+}
+function wireHome() {
+  const how = $("howDialog")
+  $("howBtn").onclick = () => how.showModal()
+  $("howClose").onclick = $("howDone").onclick = () => how.close()
+  how.addEventListener("click", (e) => {
+    // A click on the backdrop targets the dialog itself but lands outside its box.
+    const r = how.getBoundingClientRect()
+    if (e.target === how && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) how.close()
+  })
+  $("joinTile").onclick = () => {
+    $("joinBox").hidden = false
+    $("joinBox").scrollIntoView({ behavior: "smooth", block: "center" })
+  }
+  $("pasteLinkBtn").onclick = async () => {
+    try {
+      openElection(await navigator.clipboard.readText())
+    } catch {
+      setStatus("joinStatus", "Couldn't read the clipboard. Paste the link into the box below.", "err")
+      $("joinInput").focus()
+    }
+  }
+  $("joinBtn").onclick = () => openElection($("joinInput").value)
+  $("joinInput").onkeydown = (e) => e.key === "Enter" && openElection($("joinInput").value)
+  $("shareBtn").onclick = async () => {
+    const url = `${location.origin}${location.pathname}?election=${cfg.election}`
+    try {
+      await navigator.clipboard.writeText(url)
+      $("shareBtn").textContent = "Link copied"
+    } catch {
+      prompt("Copy this invite link:", url)
+    }
+    setTimeout(() => ($("shareBtn").textContent = "Copy invite link"), 2000)
+  }
+}
 const fmt = (wei) => `${Number(ethers.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${sym()}`
 // What a transaction pays per gas right now (base fee + tip).
 async function gasPriceNow() {
@@ -769,7 +1220,7 @@ async function createElection() {
     const entry = { address: rcpt.contractAddress, title }
     const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]")
     localStorage.setItem(recentKey(), JSON.stringify([entry, ...recent].slice(0, 20)))
-    setStatus("createStatus", `✓ Deployed at ${entry.address}. Opening it…`, "ok")
+    setStatus("createStatus", `Deployed at ${entry.address}. Opening it…`, "ok")
     location.href = electionUrl(entry)
   } catch (e) {
     console.error(e)
@@ -784,20 +1235,27 @@ async function createElection() {
 // ---------------------------------------------------------------------------
 async function renderResults() {
   const total = Number(state.total)
-  const label = cfg.kind === "ranked" ? "first preferences" : "votes"
-  let html = `<p class="muted">${total} vote(s). The live tally is public on-chain by design.</p>`
-  state.cands.forEach((c, i) => {
-    const n = Number(state.tally[i])
-    html += `<div>${esc(c)}: ${n} ${label}</div><div class="bar" style="width:${total ? (100 * n) / total : 0}%"></div>`
-  })
-  if (state.phase === "ended") {
+  const ended = state.phase === "ended"
+  const ranked = cfg.kind === "ranked"
+  const label = ranked ? "first-choice" : ""
+  const votes = (n) => `${n} ${label ? label + " " : ""}vote${n === 1 ? "" : "s"}`
+  $("resultsTitle").textContent = ended ? "Final results" : "Live results"
+  let html = ""
+  if (ended) {
     try {
       const w = (await election.winners()).map((i) => state.cands[Number(i)])
-      html += `<p><b>${w.length > 1 ? "Tie: " : "Winner: "}${w.map(esc).join(", ")}</b></p>`
+      html += `<p class="winner">${w.length > 1 ? "Tie between " : "Winner: "}${w.map(esc).join(w.length > 1 ? " and " : "")}</p>`
     } catch (e) {
-      html += `<p class="err">winners() failed: ${esc(errMsg(e))}</p>`
+      html += `<p class="err">Couldn't work out the winner: ${esc(errMsg(e))}</p>`
     }
   }
+  html += `<p class="muted">${total} vote${total === 1 ? "" : "s"} ${ended ? "cast" : "so far"}. Counts are public on-chain as votes come in, but no one can see who cast which.${
+    ranked ? " The winner is decided by instant runoff, so they may not be the first-choice leader." : ""
+  }</p>`
+  state.cands.forEach((c, i) => {
+    const n = Number(state.tally[i])
+    html += `<div class="tally-row"><span>${esc(c)}</span><span class="muted">${votes(n)}</span></div><div class="bar-track"><div class="bar" style="width:${total ? (100 * n) / total : 0}%"></div></div>`
+  })
   $("tally").innerHTML = html
 }
 
@@ -807,7 +1265,7 @@ async function renderResults() {
 const short = (x) => String(x).slice(0, 10) + "…"
 
 $("connect").onclick = () => connect().catch((e) => log(e.message))
-$("registerBtn").onclick = register
+$("registerBtn").onclick = () => (account ? register() : connect().catch((e) => setStatus("regStatus", errMsg(e), "err")))
 $("voteBtn").onclick = vote
 $("refresh").onclick = refresh
 $("createBtn").onclick = createElection
@@ -817,22 +1275,33 @@ $("newWhitelist").addEventListener("input", previewWhitelist)
 $("reclaimBtn").onclick = reclaim
 $("identitySel").onchange = () => {
   voteResultShown = false
+  $("exported").hidden = true
+  $("exportBtn").textContent = "Show key"
+  setStatus("keyStatus", "")
+  renderKey()
   updateVoteButton()
 }
-$("exportBtn").onclick = () => {
-  const x = loadIdentities().find((i) => i.label === $("identitySel").value)
-  $("exported").textContent = x ? x.identity.export() : "no identity selected"
-}
-$("importBtn").onclick = () => {
+$("downloadKeyBtn").onclick = downloadKey
+$("copyKeyBtn").onclick = copyKey
+$("exportBtn").onclick = toggleShowKey
+$("importBtn").onclick = importKey
+$("importFile").onchange = importKey
+$("pasteKeyBtn").onclick = async () => {
   try {
-    const identity = Identity.import($("importTxt").value.trim())
-    saveIdentity(account ?? "imported-" + identity.commitment.toString().slice(0, 8), identity)
-    $("importTxt").value = ""
-    log(`imported identity ${short(identity.commitment)}`)
-    refresh()
-  } catch (e) {
-    log(`import failed: ${e.message}`)
+    $("importTxt").value = await navigator.clipboard.readText()
+    await importKey()
+  } catch {
+    setStatus("importStatus", "Couldn't read the clipboard. Type or paste the key below.", "err")
   }
+}
+wireHome()
+wireWizard()
+$("savedKey").onchange = () => {
+  const x = selectedIdentity()
+  if (!x) return
+  if ($("savedKey").checked) localStorage.setItem(savedKey(x.identity.commitment), "1")
+  else localStorage.removeItem(savedKey(x.identity.commitment))
+  renderKey()
 }
 
 init().catch((e) => log(e.message))
