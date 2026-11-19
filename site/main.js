@@ -150,6 +150,7 @@ async function init() {
   const q = new URLSearchParams(location.search)
   const fromUrl = q.get("election")
   if (!fromUrl && !cfg.election) return
+  setStatus("homeMsg", "Opening the election…", "muted")
   try {
     if (fromUrl) cfg.election = ethers.getAddress(fromUrl)
     // Verify before rendering anything the contract returns (R3-6): its runtime code
@@ -165,6 +166,7 @@ async function init() {
     setStatus("homeMsg", `That link doesn't point to a goblett election on ${cfg.chainName ?? "chain " + cfg.chainId}. Check the link you were sent, or start your own.`, "err")
     return
   }
+  setStatus("homeMsg", "")
   document.body.classList.add("has-election")
   prefetchProofArtifacts()
   await refresh()
@@ -1145,6 +1147,7 @@ function openElection(text) {
   const t = text.trim()
   const m = t.match(/0x[0-9a-fA-F]{40}/)
   if (!m || !ethers.isAddress(m[0])) return setStatus("joinStatus", "That doesn't look like a goblett link. It should contain an address starting with 0x.", "err")
+  setStatus("joinStatus", "Opening the election…", "muted")
   location.search = `?election=${ethers.getAddress(m[0])}`
 }
 function wireHome() {
@@ -1321,7 +1324,24 @@ async function renderResults() {
 // ---------------------------------------------------------------------------
 const short = (x) => String(x).slice(0, 10) + "…"
 
-$("connect").onclick = () => connect().catch((e) => log(e.message))
+$("connect").onclick = async () => {
+  const btn = $("connect")
+  const where = document.body.classList.contains("has-election") ? "regStatus" : "homeMsg"
+  btn.disabled = true
+  btn.textContent = "Connecting…"
+  try {
+    await connect()
+    setStatus(where, "")
+  } catch (e) {
+    log(e.message)
+    // eth_requestAccounts rejected in MetaMask (4001) is the visitor's choice; anything else needs saying.
+    setStatus(where, e.code === 4001 ? "Connection cancelled in MetaMask." : errMsg(e), "err")
+    $(where).scrollIntoView({ behavior: "smooth", block: "center" })
+  } finally {
+    btn.disabled = false
+    btn.textContent = "Connect wallet"
+  }
+}
 $("registerBtn").onclick = () => (account ? register() : connect().catch((e) => setStatus("regStatus", errMsg(e), "err")))
 $("voteBtn").onclick = vote
 $("refresh").onclick = refresh
