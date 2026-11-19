@@ -24,7 +24,7 @@
     #8a8a94 38%, #f1f1f4 44%, #9a9aa4 52%, #ffffff 63%, #3b3b44 74%, #c4c4cb 80%, #6c6c76 86%, #f4f4f6);
   --metal-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 10px 24px -12px rgba(0, 0, 0, 0.45);
   /* The frosted plate that sits still on top of the moving metal and carries the label. */
-  --glass: rgba(226, 226, 231, 0.7);
+  --glass: rgba(226, 226, 231, 0.6);
   --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.07);
   --on-chrome: #161615;
 }
@@ -154,14 +154,25 @@ button.secondary, .button.secondary { background: var(--surface); color: var(--i
 button:not(.secondary, .link, .tool, .chip, .choice-tile, .tag button), .chip.on {
   position: relative; isolation: isolate;
   background: var(--metal); color: var(--on-chrome); box-shadow: var(--metal-shadow);
-  animation: liquid-spin 7s linear infinite;
+  animation: liquid-spin 3.2s linear infinite;
 }
+/* The glass: the metal shows through it softly, a band of light drifts across it, and its edge
+   ripples so the metal rim around it swells and thins like liquid. */
 button:not(.secondary, .link, .tool, .chip, .choice-tile, .tag button)::before, .chip.on::before {
   content: ""; position: absolute; inset: 3px; z-index: -1; border-radius: 7.5px;
-  background: var(--glass); box-shadow: var(--glass-edge);
-  -webkit-backdrop-filter: blur(6px) saturate(1.3); backdrop-filter: blur(6px) saturate(1.3);
+  background: linear-gradient(105deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.38) 46%, rgba(255, 255, 255, 0) 62%) 0 0 / 260% 100%,
+    var(--glass);
+  box-shadow: var(--glass-edge);
+  -webkit-backdrop-filter: blur(4px) saturate(1.3); backdrop-filter: blur(4px) saturate(1.3);
+  animation: glass-sheen 3.6s linear infinite, rim-ripple 2.6s ease-in-out infinite;
 }
-button.big::before { inset: 3.5px !important; }
+@keyframes glass-sheen { from { background-position: 130% 0, 0 0; } to { background-position: -130% 0, 0 0; } }
+@keyframes rim-ripple {
+  0%, 100% { inset: 3px; }
+  25% { inset: 2.5px 3.5px 3px 2.5px; }
+  50% { inset: 3.5px 2.5px 2.5px 3.5px; }
+  75% { inset: 2.5px 3px 3.5px 3px; }
+}
 button.small { min-height: 34px; padding: 0 12px; font-size: 13px; }
 button.big { width: 100%; min-height: 48px; font-size: 15px; margin: 8px 0; }
 button.link {
@@ -541,6 +552,6 @@ body.intro-open { overflow: hidden; }
 .guide-dots li.on { width: 16px; border-radius: 3px; background: var(--ink); }
 
 @media (prefers-reduced-motion: reduce) {
-  .liquid, .term, .term-blob, .guide-token.bob, .guide-line .w, .intro, .guide, button, .chip.on, #ballot .mark, .seal-token, .forge-new { animation: none !important; }
+  .liquid, .term, .term-blob, .guide-token.bob, .guide-line .w, .intro, .guide, button, button::before, .chip.on, .chip.on::before, #ballot .mark, .seal-token, .forge-new { animation: none !important; }
   .term { transition: none; }
 }
