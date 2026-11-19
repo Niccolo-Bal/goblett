@@ -19,12 +19,17 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --r: 12px;
   --float: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 12px 32px -18px rgba(0, 0, 0, 0.22);
-  /* Liquid metal for buttons: bright and dark streaks only (the colour glints stay on the round token), turned by --spin. */
-  --metal: conic-gradient(from var(--spin) at 50% 50%, #f4f4f6, #74747e 7%, #ffffff 14%, #2c2c33 21%, #d9d9df 30%,
-    #8a8a94 38%, #f1f1f4 44%, #9a9aa4 52%, #ffffff 63%, #3b3b44 74%, #c4c4cb 80%, #6c6c76 86%, #f4f4f6);
+  /* Liquid metal: bright and dark pools on a silver base. metal-flow drifts the pools past each other. */
+  --metal:
+    radial-gradient(closest-side, #ffffff, rgba(255, 255, 255, 0)) 0 0 / 70% 160% no-repeat,
+    radial-gradient(closest-side, #23232a, rgba(35, 35, 42, 0)) 100% 100% / 60% 150% no-repeat,
+    radial-gradient(closest-side, #6b6b75, rgba(107, 107, 117, 0)) 50% 0 / 55% 140% no-repeat,
+    radial-gradient(closest-side, #f6f6f8, rgba(246, 246, 248, 0)) 100% 0 / 65% 160% no-repeat,
+    radial-gradient(closest-side, #3a3a42, rgba(58, 58, 66, 0)) 0 100% / 50% 130% no-repeat,
+    linear-gradient(#bdbdc4, #bdbdc4);
   --metal-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 10px 24px -12px rgba(0, 0, 0, 0.45);
   /* The frosted plate that sits still on top of the moving metal and carries the label. */
-  --glass: rgba(226, 226, 231, 0.6);
+  --glass: rgba(228, 228, 233, 0.5);
   --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.07);
   --on-chrome: #161615;
 }
@@ -47,7 +52,7 @@
     --warn: #e0a34a;
     --float: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 16px 36px -18px rgba(0, 0, 0, 0.8);
     --metal-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 10px 24px -12px rgba(0, 0, 0, 0.9);
-    --glass: rgba(38, 38, 43, 0.66);
+    --glass: rgba(34, 34, 39, 0.55);
     --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
     --on-chrome: #f2f2ee;
   }
@@ -104,6 +109,12 @@ h2 .tone { display: block; font-size: 15px; font-weight: 400; letter-spacing: -0
   filter: blur(1.5px); opacity: 0.75;
 }
 @keyframes liquid-spin { to { --spin: 360deg; } }
+@keyframes metal-flow {
+  0%, 100% { background-position: -10% 0%, 110% 100%, 50% -30%, 110% 0%, -10% 110%, 0 0; }
+  25% { background-position: 40% 100%, 60% -10%, 100% 60%, 20% 30%, 80% 20%, 0 0; }
+  50% { background-position: 110% 40%, -10% 50%, 30% 110%, 60% 120%, 40% -20%, 0 0; }
+  75% { background-position: 60% -20%, 30% 110%, -10% 30%, 100% 60%, 10% 70%, 0 0; }
+}
 @keyframes liquid-morph {
   0%, 100% { border-radius: 48% 52% 46% 54% / 52% 46% 54% 48%; }
   33% { border-radius: 56% 44% 52% 48% / 44% 56% 46% 54%; }
@@ -150,29 +161,19 @@ button:active:not(:disabled) { transform: translateY(0); }
 button:disabled { opacity: 0.35; cursor: not-allowed; }
 button.secondary, .button.secondary { background: var(--surface); color: var(--ink); box-shadow: var(--float); }
 
-/* The main action: metal moving around the edge, under a still frosted-glass plate holding the label. */
+/* The main action: liquid metal flows behind a still, slightly see-through frosted glass box holding the label.
+   Only the metal moves; you see it softly through the glass and crisply in the thin rim around it. */
 button:not(.secondary, .link, .tool, .chip, .choice-tile, .tag button), .chip.on {
   position: relative; isolation: isolate;
   background: var(--metal); color: var(--on-chrome); box-shadow: var(--metal-shadow);
-  animation: liquid-spin 3.2s linear infinite;
+  animation: metal-flow 7s ease-in-out infinite;
 }
-/* The glass: the metal shows through it softly, a band of light drifts across it, and its edge
-   ripples so the metal rim around it swells and thins like liquid. */
 button:not(.secondary, .link, .tool, .chip, .choice-tile, .tag button)::before, .chip.on::before {
   content: ""; position: absolute; inset: 3px; z-index: -1; border-radius: 7.5px;
-  background: linear-gradient(105deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.38) 46%, rgba(255, 255, 255, 0) 62%) 0 0 / 260% 100%,
-    var(--glass);
-  box-shadow: var(--glass-edge);
-  -webkit-backdrop-filter: blur(4px) saturate(1.3); backdrop-filter: blur(4px) saturate(1.3);
-  animation: glass-sheen 3.6s linear infinite, rim-ripple 2.6s ease-in-out infinite;
+  background: var(--glass); box-shadow: var(--glass-edge);
+  -webkit-backdrop-filter: blur(5px) saturate(1.2); backdrop-filter: blur(5px) saturate(1.2);
 }
-@keyframes glass-sheen { from { background-position: 130% 0, 0 0; } to { background-position: -130% 0, 0 0; } }
-@keyframes rim-ripple {
-  0%, 100% { inset: 3px; }
-  25% { inset: 2.5px 3.5px 3px 2.5px; }
-  50% { inset: 3.5px 2.5px 2.5px 3.5px; }
-  75% { inset: 2.5px 3px 3.5px 3px; }
-}
+button.small::before { border-radius: 6.5px; }
 button.small { min-height: 34px; padding: 0 12px; font-size: 13px; }
 button.big { width: 100%; min-height: 48px; font-size: 15px; margin: 8px 0; }
 button.link {
@@ -283,7 +284,7 @@ body[data-phase="ended"] #results { order: -1; }
 }
 #ballot input[type="radio"] + .mark::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: transparent; }
 #ballot label.choice:has(input:checked) { background: var(--surface); box-shadow: var(--float); }
-#ballot label.choice:has(input:checked) .mark { background: var(--metal); box-shadow: var(--metal-shadow); animation: liquid-spin 7s linear infinite; }
+#ballot label.choice:has(input:checked) .mark { background: var(--metal); box-shadow: var(--metal-shadow); animation: metal-flow 7s ease-in-out infinite; }
 #ballot label.choice:has(input[type="radio"]:checked) .mark::after { width: 12px; height: 12px; background: var(--glass); box-shadow: var(--glass-edge); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
 #ballot .ranked-tools { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 4px 0; }
 #ballot .ranked-tools p { margin: 0; }
@@ -386,7 +387,7 @@ body[data-phase="ended"] #results { order: -1; }
 /* sealed / dropping: a chrome token, then it falls through the slot */
 .sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-token {
   width: 168px; height: 46px; border-radius: 999px; background: var(--metal); box-shadow: var(--metal-shadow);
-  isolation: isolate; animation: liquid-spin 7s linear infinite;
+  isolation: isolate; animation: metal-flow 7s ease-in-out infinite;
 }
 .sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-token::before {
   content: ""; position: absolute; inset: 3px; z-index: -1; border-radius: 999px; background: var(--glass); box-shadow: var(--glass-edge);
@@ -461,7 +462,7 @@ body[data-phase="ended"] #results { order: -1; }
 .forge[data-state="recording"] .forge-list { box-shadow: 0 0 0 1.5px var(--ink), 0 12px 32px -18px rgba(0, 0, 0, 0.22); }
 
 .forge[data-state="registered"] .forge-chip { opacity: 0; transition: opacity 0.3s; }
-.forge[data-state="registered"] .forge-new { background: var(--metal); box-shadow: var(--metal-shadow); animation: liquid-spin 7s linear infinite; }
+.forge[data-state="registered"] .forge-new { background: var(--metal); box-shadow: var(--metal-shadow); animation: metal-flow 7s ease-in-out infinite; }
 .forge[data-state="registered"] .forge-list-label { color: var(--ink); }
 .forge[data-state="registered"] .forge-list-label::before { content: "✓  "; }
 
@@ -527,7 +528,7 @@ body.intro-open { overflow: hidden; }
   opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s;
 }
 .term-bar kbd { font: 500 12px var(--mono); color: #161615; background: rgba(0, 0, 0, 0.06); border-radius: 6px; padding: 3px 6px; }
-.term-bar button { --on-chrome: #161615; --glass: rgba(226, 226, 231, 0.7); --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.07); }
+.term-bar button { --on-chrome: #161615; --glass: rgba(228, 228, 233, 0.5); --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.07); }
 .intro[data-phase="ready"] .term-bar { opacity: 1; transform: none; }
 .intro:not([data-phase="typing"]):not([data-phase="ready"]) .caret { display: none; }
 .intro[data-phase="collapsing"] .term { transform: scale(0.26); border-radius: 50%; opacity: 0; }
