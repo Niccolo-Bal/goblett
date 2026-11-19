@@ -19,14 +19,15 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --r: 12px;
   --float: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 12px 32px -18px rgba(0, 0, 0, 0.22);
-  /* Liquid metal: bright and dark pools on a silver base. metal-flow drifts the pools past each other. */
+  /* Liquid metal tinted with ember's blue: bright, pale-blue and deep-blue pools on a cool silver base.
+     metal-flow drifts the pools past each other. */
   --metal:
     radial-gradient(closest-side, #ffffff, rgba(255, 255, 255, 0)) 0 0 / 70% 160% no-repeat,
-    radial-gradient(closest-side, #23232a, rgba(35, 35, 42, 0)) 100% 100% / 60% 150% no-repeat,
-    radial-gradient(closest-side, #6b6b75, rgba(107, 107, 117, 0)) 50% 0 / 55% 140% no-repeat,
-    radial-gradient(closest-side, #f6f6f8, rgba(246, 246, 248, 0)) 100% 0 / 65% 160% no-repeat,
-    radial-gradient(closest-side, #3a3a42, rgba(58, 58, 66, 0)) 0 100% / 50% 130% no-repeat,
-    linear-gradient(#bdbdc4, #bdbdc4);
+    radial-gradient(closest-side, #1f3358, rgba(31, 51, 88, 0)) 100% 100% / 60% 150% no-repeat,
+    radial-gradient(closest-side, #4c8dff, rgba(76, 141, 255, 0)) 50% 0 / 55% 140% no-repeat,
+    radial-gradient(closest-side, #cfe1ff, rgba(207, 225, 255, 0)) 100% 0 / 65% 160% no-repeat,
+    radial-gradient(closest-side, #2f6fe8, rgba(47, 111, 232, 0)) 0 100% / 50% 130% no-repeat,
+    linear-gradient(#b9c3d6, #b9c3d6);
   --metal-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 10px 24px -12px rgba(0, 0, 0, 0.45);
   /* The frosted plate that sits still on top of the moving metal and carries the label. */
   --glass: rgba(228, 228, 233, 0.5);
