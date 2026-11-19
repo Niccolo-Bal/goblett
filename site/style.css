@@ -397,19 +397,32 @@ body[data-phase="ended"] #results { order: -1; }
 .sealer[data-state="sealing"] .seal-sweep { opacity: 0.6; animation: seal-scan 1.4s ease-in-out infinite; }
 @keyframes seal-scan { 0% { transform: translateY(0); } 50% { transform: translateY(82px); } 100% { transform: translateY(0); } }
 
-/* sealed / dropping: a chrome token, then it falls through the slot */
+/* sealed / dropping: the card becomes a small round liquid-metal token (the same as the home page's),
+   then it falls through the slot */
 .sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-token {
-  width: 168px; height: 46px; border-radius: 999px; background: var(--metal); box-shadow: var(--metal-shadow);
-  isolation: isolate; animation: metal-flow 7s ease-in-out infinite;
+  width: 66px; height: 60px; overflow: visible; isolation: isolate;
+  background: conic-gradient(from var(--spin) at 18% 135%, #f4f4f7, #9a9aa4, #ffffff, #55555f, #e2e2e7, #b0b0b9, #f4f4f7);
+  box-shadow: inset 0 -8px 18px rgba(0, 0, 0, 0.3), inset 0 6px 14px rgba(255, 255, 255, 0.75);
+  border-radius: 48% 52% 46% 54% / 52% 46% 54% 48%;
+  animation: liquid-spin 10s linear infinite, liquid-morph 8s ease-in-out infinite, glow-breathe 4s ease-in-out infinite;
 }
+/* its drifting highlight and dark pool */
 .sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-token::before {
-  content: ""; position: absolute; inset: 3px; z-index: -1; border-radius: 999px; background: var(--glass); box-shadow: var(--glass-edge);
-  -webkit-backdrop-filter: blur(6px) saturate(1.3); backdrop-filter: blur(6px) saturate(1.3);
+  content: ""; position: absolute; inset: 6%; border-radius: inherit;
+  background:
+    radial-gradient(38% 30% at 34% 28%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 100%),
+    radial-gradient(46% 38% at 64% 74%, rgba(14, 14, 22, 0.85), rgba(14, 14, 22, 0) 100%);
+  filter: blur(4px); transform: rotate(calc(var(--spin) * -1));
 }
-.sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-label { opacity: 0; height: 0; }
-.sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-text {
-  font: 500 13px/1 var(--mono); letter-spacing: 0.02em; color: var(--on-chrome);
+/* its blue rim */
+.sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-token::after {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 2.5px; z-index: -1;
+  background: conic-gradient(from calc(var(--spin) * -1.5), var(--glow-pale), var(--glow), #ffffff, var(--glow-deep), #cfe1ff, var(--glow-pale));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  filter: blur(1px); opacity: 0.8;
 }
+.sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-label, .sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-text, .sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-sweep { opacity: 0; height: 0; padding: 0; }
 .sealer:is([data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-token { transform: translateX(-50%) translateY(160px); }
 
 /* the box takes it in, then confirms */
