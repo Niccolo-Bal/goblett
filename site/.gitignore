@@ -6,3 +6,5 @@ dist/
 !.env.example
 .dev.vars
 .wrangler/
+# local dev chain config
+public/election.local.json

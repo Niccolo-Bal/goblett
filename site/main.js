@@ -1,4 +1,5 @@
-// goblett minimal front-end.
+// goblett front-end: one page with four views (home, sign in, vote, create), switched by
+// the URL hash. See route() at the bottom.
 //
 // Registration: MetaMask signs EIP-712 Register(wallet, commitment); the relayer
 // submits registerFor. Voting: the browser builds a Semaphore proof and the relayer
@@ -10,6 +11,10 @@
 // (deanonymize you) and vote as you.
 
 import { ethers } from "ethers"
+// Fonts are bundled with the site instead of fetched from a font host: a voter's browser
+// should not tell a third party that it opened this page.
+import "@fontsource-variable/space-grotesk"
+import "@fontsource-variable/jetbrains-mono"
 import { Identity } from "@semaphore-protocol/identity"
 import { Group } from "@semaphore-protocol/group"
 import { generateProof } from "@semaphore-protocol/proof"
@@ -123,8 +128,9 @@ const votedKey = (commitment) => `goblett:voted:${cfg.election.toLowerCase()}:${
 // ---------------------------------------------------------------------------
 // Chain reads
 // ---------------------------------------------------------------------------
-// "testnet" when the page is opened under /testnet, else null (the main network).
-const NETWORK = location.pathname.split("/")[1] === "testnet" ? "testnet" : null
+// The first path segment picks the network: / is the main one, /testnet the test network
+// (/local is a development chain, if its config file exists). null = the main network.
+const NETWORK = ["testnet", "local"].find((n) => n === location.pathname.split("/")[1]) ?? null
 
 async function init() {
   try {
@@ -136,10 +142,11 @@ async function init() {
     $("title").textContent = `Chain not set up${NETWORK ? ` for /${NETWORK}` : ""} (run relayer/setup_chain.py, then reload)`
     return
   }
-  if (NETWORK) {
-    $("network").textContent = cfg.chainName ?? NETWORK
-    $("network").hidden = false
-  }
+  // Network chip: names the chain and links to the other deployment (/ <-> /testnet).
+  $("network").innerHTML = `<span class="dot"></span>${esc(cfg.chainName ?? "chain " + cfg.chainId)}`
+  $("network").title = NETWORK ? "Switch to the main network" : "Switch to the test network"
+  $("network").hidden = false
+  route()
   const net = ethers.Network.from(cfg.chainId)
   provider = new ethers.JsonRpcProvider(cfg.rpcUrl, net, { staticNetwork: net, cacheTimeout: -1 })
   initCreateForm().catch((e) => log(errMsg(e)))
@@ -148,8 +155,7 @@ async function init() {
   const q = new URLSearchParams(location.search)
   const fromUrl = q.get("election")
   if (!fromUrl && !cfg.election) {
-    $("title").textContent = "No election selected. Create one below."
-    $("createCard").open = true
+    $("title").textContent = "Open an election"
     return
   }
   try {
@@ -164,10 +170,11 @@ async function init() {
     cfg.kind = kind
     election = c
   } catch (e) {
-    $("title").textContent = `No goblett election at ${fromUrl ?? cfg.election} on chain ${cfg.chainId}. Create one below.`
-    $("createCard").open = true
+    $("title").textContent = "Open an election"
+    setStatus("openStatus", `There is no Goblett election at ${fromUrl ?? cfg.election} on ${cfg.chainName ?? "chain " + cfg.chainId}. Check the address, and the network (top right).`, "err")
     return
   }
+  $("title").textContent = "Open another election"
   document.body.classList.add("has-election")
   prefetchProofArtifacts()
   await refresh()
@@ -181,7 +188,7 @@ async function refresh() {
     await _refresh()
   } catch (e) {
     const code = provider && (await provider.getCode(cfg.election).catch(() => null))
-    $("title").textContent =
+    $("electionTitle").textContent =
       code === null ? `Chain RPC not reachable at ${cfg.rpcUrl}` : code === "0x" ? `No election contract at ${cfg.election}. Redeploy, then reload.` : `Error: ${errMsg(e)}`
   }
 }
@@ -224,19 +231,41 @@ async function _refresh() {
   const terms = state?.terms ?? { bounty: await election.relayBounty(), creator: await election.creator() }
   state = { title, cands, phase, regEnd, vStart, vEnd, minAnon, regCount, total, tally, funds, terms }
   if (account) Object.assign(state, await walletStatus(account))
-  const t = (s) => new Date(Number(s) * 1000).toLocaleString()
+  const t = (s) => new Date(Number(s) * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+  // Time left, measured on the chain's clock (which is what the contract checks).
+  const now = BigInt(block.timestamp)
+  const left = (until) => {
+    const sec = Number(until > now ? until - now : 0n)
+    const [d, h, m] = [Math.floor(sec / 86400), Math.floor((sec % 86400) / 3600), Math.floor((sec % 3600) / 60)]
+    return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : m ? `${m}m` : `${sec}s`
+  }
 
-  $("title").textContent = title
-  $("info").innerHTML = `
-    <dt>Type</dt><dd>${cfg.kind === "ranked" ? "Ranked choice (instant runoff)" : "First past the post"}</dd>
-    <dt>Phase</dt><dd><b>${esc(phase)}</b></dd>
-    <dt>Chain time</dt><dd>${t(block.timestamp)}</dd>
-    <dt>Registration until</dt><dd>${t(regEnd)}</dd>
-    <dt>Voting</dt><dd>${t(vStart)} → ${t(vEnd)}</dd>
-    <dt>Registered</dt><dd>${regCount} (voting needs ≥ ${minAnon})</dd>
-    <dt>Relayer funding</dt><dd>${fmt(funds)} left (bounty ${fmt(terms.bounty)} per registration/vote, plus gas)${funds === 0n ? ' <span class="err">— relayers may refuse to forward</span>' : ""}</dd>
-    <dt>Election</dt><dd>${cfg.explorerUrl ? `<a href="${cfg.explorerUrl}/address/${cfg.election}" target="_blank" rel="noopener">${cfg.election}</a>` : cfg.election} (${esc(cfg.chainName ?? "chain " + cfg.chainId)})</dd>`
+  $("electionTitle").textContent = title
+  $("kindTag").textContent = cfg.kind === "ranked" ? "Ranked choice" : "Single choice"
+  const phaseText = { registration: "Registration open", frozen: "Registration closed", voting: "Voting open", ended: "Ended" }
+  $("phasePill").textContent = phaseText[phase] ?? phase
+  $("phasePill").classList.toggle("off", phase === "ended")
+
+  const step = (name, cls, when) => `<li class="${cls}"><strong>${name}</strong><span>${when}</span></li>`
+  $("timeline").innerHTML =
+    step("Registration", phase === "registration" ? "now" : "done", phase === "registration" ? `closes in ${left(regEnd)} · ${t(regEnd)}` : `closed ${t(regEnd)}`) +
+    step("Voting", phase === "voting" ? "now" : phase === "ended" ? "done" : "", phase === "voting" ? `closes in ${left(vEnd)} · ${t(vEnd)}` : phase === "ended" ? `closed ${t(vEnd)}` : `opens ${t(vStart)}`) +
+    step("Results", phase === "ended" ? "now" : "", phase === "ended" ? "final" : `final after ${t(vEnd)}`)
+
+  const stat = (label, value, sub) => `<div class="stat"><span class="label">${label}</span><b>${value}</b><small>${sub}</small></div>`
+  const turnout = regCount > 0n ? `${Math.round((100 * Number(total)) / Number(regCount))}% of registered` : "no one registered yet"
+  $("info").innerHTML =
+    stat("Registered", regCount, regCount < minAnon ? `voting opens at ${minAnon}` : `minimum of ${minAnon} met`) +
+    stat("Votes cast", total, turnout) +
+    stat("Relayer funding", fmt(funds), funds === 0n ? '<span class="err">empty: relayers may refuse</span>' : `bounty ${fmt(terms.bounty)} per relay`) +
+    stat("Chain time", new Date(Number(now) * 1000).toLocaleTimeString(undefined, { timeStyle: "short" }), esc(cfg.chainName ?? "chain " + cfg.chainId))
+  $("electionMeta").innerHTML = cfg.explorerUrl
+    ? `<a href="${esc(cfg.explorerUrl)}/address/${cfg.election}" target="_blank" rel="noopener">${cfg.election} ↗</a>`
+    : cfg.election
   $("reclaimBtn").hidden = !(phase === "ended" && funds > 0n)
+  // Fade the step that can't be done in this phase.
+  $("register").classList.toggle("dim", phase !== "registration")
+  $("vote").classList.toggle("dim", phase !== "voting")
 
   renderRegister()
   renderIdentities()
@@ -255,20 +284,72 @@ window.addEventListener("eip6963:announceProvider", (ev) => wallets.push(ev.deta
 window.dispatchEvent(new Event("eip6963:requestProvider"))
 let eth // the EIP-1193 provider we talk to
 
-async function connect() {
+const SIGNED_OUT = "goblett:signedOut" // set by "Sign out": don't reconnect by ourselves
+let listening = false
+
+function pickWallet() {
   const mm = wallets.find((w) => w.info.rdns === "io.metamask") ?? wallets.find((w) => w.info.rdns?.startsWith("io.metamask"))
   eth = mm?.provider ?? window.ethereum
-  if (!eth) return log("MetaMask not found")
+  return mm
+}
+
+function useAccount(acc) {
+  account = acc ? ethers.getAddress(acc) : undefined
+  walletCache = undefined
+  resetAccount()
+  if (!listening && eth?.on) {
+    listening = true
+    eth.on("accountsChanged", (accs) => {
+      if (localStorage.getItem(SIGNED_OUT)) return
+      useAccount(accs[0])
+      refresh()
+    })
+  }
+}
+
+async function connect() {
+  const mm = pickWallet()
+  if (!eth) throw new Error("MetaMask was not found in this browser. Install it, then reload this page.")
   log(`using wallet: ${mm ? mm.info.name : "window.ethereum"}${wallets.length > 1 ? ` (found ${wallets.map((w) => w.info.name).join(", ")})` : ""}`)
   const [acc] = await eth.request({ method: "eth_requestAccounts" })
-  account = ethers.getAddress(acc)
-  resetAccount()
-  eth.on?.("accountsChanged", (accs) => {
-    account = accs[0] ? ethers.getAddress(accs[0]) : undefined
-    resetAccount()
-    refresh()
-  })
+  localStorage.removeItem(SIGNED_OUT)
+  useAccount(acc)
   await refresh()
+}
+
+// The sign-in page's button. Afterwards, back to whichever app view the visitor was on.
+async function signIn() {
+  $("connect").disabled = true
+  setStatus("signinStatus", "Approve the connection in MetaMask…", "hint")
+  try {
+    await connect()
+    setStatus("signinStatus", `Signed in as ${account}.`, "ok")
+    location.hash = `#/${lastAppView}`
+  } catch (e) {
+    setStatus("signinStatus", errMsg(e), "err")
+  } finally {
+    $("connect").disabled = false
+  }
+}
+
+// A site can't disconnect a wallet; signing out forgets the account here and stops the
+// page from picking it up again until the next sign-in.
+function signOut() {
+  localStorage.setItem(SIGNED_OUT, "1")
+  useAccount(undefined)
+  refresh()
+}
+
+// If this site is already connected in the wallet (and the visitor didn't sign out), pick
+// the account up without a prompt. eth_accounts never opens MetaMask.
+async function restoreSession() {
+  if (account || localStorage.getItem(SIGNED_OUT)) return
+  pickWallet()
+  if (!eth) return
+  const [acc] = await eth.request({ method: "eth_accounts" }).catch(() => [])
+  if (!acc) return
+  useAccount(acc)
+  refresh()
 }
 
 // MetaMask grants accounts per site (and per network in newer versions). Check that
@@ -278,7 +359,7 @@ async function ensureAccountAuthorized() {
   if ((await authorized()).includes(account.toLowerCase())) return
   await eth.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] })
   if (!(await authorized()).includes(account.toLowerCase())) {
-    throw new Error(`MetaMask hasn't authorized ${account} for this site. In MetaMask, open the site connections for localhost:5173, connect this account (and the goblett test network), then retry.`)
+    throw new Error(`MetaMask hasn't authorized ${account} for this site. In MetaMask, open the connected sites, connect this account to ${location.host}, then retry.`)
   }
 }
 
@@ -315,8 +396,11 @@ const errMsg = (e) => e?.error?.message ?? e?.info?.error?.message ?? e?.shortMe
 function renderRegister() {
   const btn = $("registerBtn")
   btn.disabled = true
-  if (!account) return setStatus("regStatus", "Connect MetaMask to register.", "hint")
-  if (state.phase !== "registration") return setStatus("regStatus", `Registration is closed (phase: ${state.phase}).`, "hint")
+  if (!account) {
+    $("regStatus").innerHTML = '<p class="hint">Sign in with the wallet you were whitelisted with to register. <a href="#/signin">Sign in</a></p>'
+    return
+  }
+  if (state.phase !== "registration") return setStatus("regStatus", "Registration has closed.", "hint")
   if (state.walletErr) return setStatus("regStatus", `Could not check this wallet over the private channel: ${state.walletErr}`, "err")
   if (!state.whitelisted) return setStatus("regStatus", `${account} is not on this election's whitelist.`, "err")
   if (state.registered) {
@@ -453,8 +537,8 @@ function renderBallot() {
   const box = $("ballot")
   if (cfg.kind === "ranked") {
     box.innerHTML =
-      `<p class="muted">Click candidates in order of preference (you may stop early).</p>` +
-      state.cands.map((c, i) => `<label><input type="checkbox" data-i="${i}" /> <span class="rank" id="rank${i}"></span>${esc(c)}</label>`).join("")
+      `<p class="muted">Tick candidates in order of preference. You can stop early.</p>` +
+      state.cands.map((c, i) => `<label class="option"><input type="checkbox" data-i="${i}" /><span class="rank" id="rank${i}"></span><span>${esc(c)}</span></label>`).join("")
     box.querySelectorAll("input").forEach((el) =>
       el.addEventListener("change", () => {
         const i = Number(el.dataset.i)
@@ -464,7 +548,7 @@ function renderBallot() {
       })
     )
   } else {
-    box.innerHTML = state.cands.map((c, i) => `<label><input type="radio" name="cand" value="${i}" /> ${esc(c)}</label>`).join("")
+    box.innerHTML = state.cands.map((c, i) => `<label class="option"><input type="radio" name="cand" value="${i}" /><span>${esc(c)}</span></label>`).join("")
     box.querySelectorAll("input").forEach((el) => el.addEventListener("change", updateVoteButton))
   }
 }
@@ -480,7 +564,7 @@ let voteResultShown = false
 function updateVoteButton() {
   const why =
     state.phase !== "voting"
-      ? `Voting is not open (phase: ${state.phase}).`
+      ? state.phase === "ended" ? "Voting has ended." : "Voting opens when registration closes."
       : state.regCount < state.minAnon
         ? `Too few registrations (${state.regCount} of ${state.minAnon} needed).`
         : !$("identitySel").value
@@ -557,7 +641,10 @@ async function vote() {
 let username // of the connected wallet, if it has one
 
 function renderAccount() {
-  $("account").textContent = !account ? "not connected" : username ? `${username} (${account.slice(0, 6)}…${account.slice(-4)})` : account
+  const brief = account && `${account.slice(0, 6)}…${account.slice(-4)}`
+  $("account").textContent = !account ? "" : username ? `${username} · ${brief}` : brief
+  $("walletChip").hidden = !account
+  $("signinLink").hidden = !!account
   $("accountCard").hidden = !account
 }
 
@@ -643,7 +730,8 @@ function previewWhitelist() {
 // Create an election (deployed from the connected wallet, which pays the gas)
 // ---------------------------------------------------------------------------
 const recentKey = () => `goblett:elections:${cfg.chainId}`
-const electionUrl = (e) => `?election=${e.address}`
+// Keeps the network's path (/ or /testnet) and opens the app view.
+const electionUrl = (e) => `${location.pathname}?election=${e.address}#/app`
 const lines = (id) => $(id).value.split("\n").map((x) => x.trim()).filter(Boolean)
 // <input type="datetime-local"> works in local time without a zone: "2026-11-16T21:05".
 const toLocalInput = (unix) => {
@@ -656,10 +744,11 @@ const fromLocalInput = (v) => Math.floor(new Date(v).getTime() / 1000)
 const chainNow = async () => Math.max(...(await Promise.all([provider.getBlock("pending").catch(() => null), provider.getBlock("latest")])).map((b) => b?.timestamp ?? 0))
 
 async function initCreateForm() {
-  const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]")
-  $("recent").innerHTML = recent.length
-    ? "<p class='muted'>Elections created from this browser:</p>" + recent.map((e) => `<div><a href="${electionUrl(e)}">${esc(e.title)}</a> <span class="muted">${e.address}</span></div>`).join("")
-    : ""
+  // Elections created from this browser, on the Create page and under the address box.
+  const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]").filter((e) => ethers.isAddress(e?.address))
+  const links = recent.map((e) => `<a href="${electionUrl(e)}"><b>${esc(e.title)}</b><span>${e.address}</span></a>`).join("")
+  $("recent").innerHTML = links
+  $("recentVote").innerHTML = links && `<p class="label">Created in this browser</p>${links}`
   const now = await chainNow()
   $("newRegEnd").value = toLocalInput(now + 15 * 60)
   $("newVoteEnd").value = toLocalInput(now + 45 * 60)
@@ -773,7 +862,9 @@ async function createElection() {
     location.href = electionUrl(entry)
   } catch (e) {
     console.error(e)
-    setStatus("createStatus", `Could not create the election at step "${step}": ${errMsg(e)}`, "err")
+    // A form mistake reads as itself; anything later says which step failed.
+    const msg = errMsg(e)
+    setStatus("createStatus", step === "check the form" ? msg[0].toUpperCase() + msg.slice(1) + "." : `Could not create the election at step "${step}": ${msg}`, "err")
   } finally {
     btn.disabled = false
   }
@@ -784,21 +875,63 @@ async function createElection() {
 // ---------------------------------------------------------------------------
 async function renderResults() {
   const total = Number(state.total)
-  const label = cfg.kind === "ranked" ? "first preferences" : "votes"
-  let html = `<p class="muted">${total} vote(s). The live tally is public on-chain by design.</p>`
-  state.cands.forEach((c, i) => {
-    const n = Number(state.tally[i])
-    html += `<div>${esc(c)}: ${n} ${label}</div><div class="bar" style="width:${total ? (100 * n) / total : 0}%"></div>`
-  })
+  const unit = cfg.kind === "ranked" ? "first preferences" : total === 1 ? "vote" : "votes"
+  let won = []
+  let failed = ""
   if (state.phase === "ended") {
     try {
-      const w = (await election.winners()).map((i) => state.cands[Number(i)])
-      html += `<p><b>${w.length > 1 ? "Tie: " : "Winner: "}${w.map(esc).join(", ")}</b></p>`
+      won = (await election.winners()).map(Number)
     } catch (e) {
-      html += `<p class="err">winners() failed: ${esc(errMsg(e))}</p>`
+      failed = `<p class="err">Could not read the winner: ${esc(errMsg(e))}</p>`
     }
   }
-  $("tally").innerHTML = html
+  let html = `<p class="muted">${total} ${unit}. ${state.phase === "ended" ? "This result is final." : "The tally is public while voting is open."}</p>`
+  state.cands.forEach((c, i) => {
+    const n = Number(state.tally[i])
+    const pct = total ? Math.round((100 * n) / total) : 0
+    html += `<div class="result${won.includes(i) ? " won" : ""}"><div class="result-top"><span>${esc(c)}</span><span>${n} · ${pct}%</span></div><div class="track"><i style="width:${pct}%"></i></div></div>`
+  })
+  if (won.length) html += `<div class="winner"><span class="label">${won.length > 1 ? "Tie" : "Winner"}</span><br />${won.map((i) => esc(state.cands[i])).join(", ")}</div>`
+  $("tally").innerHTML = html + failed
+}
+
+// ---------------------------------------------------------------------------
+// Views: home, sign in, vote (app), create. The hash picks one; a link that carries
+// ?election= and no hash (the form organizers share) opens the vote view.
+// ---------------------------------------------------------------------------
+const VIEWS = ["home", "signin", "app", "create"]
+let lastAppView = "app"
+
+function route() {
+  let view = location.hash.replace(/^#\/?/, "")
+  if (!VIEWS.includes(view)) view = new URLSearchParams(location.search).has("election") ? "app" : "home"
+  if (view === "app" || view === "create") lastAppView = view
+  const changed = document.body.dataset.view !== view
+  document.body.dataset.view = view
+  for (const a of document.querySelectorAll("[data-nav]")) a.classList.toggle("active", a.dataset.nav.split(" ").includes(view))
+  // The network chip leads to the same view on the other network.
+  $("network").href = (NETWORK ? "/" : "/testnet") + `#/${view}`
+  if (changed) window.scrollTo(0, 0)
+}
+
+// Open an election from a pasted address or link.
+function openElection() {
+  const found = $("openInput").value.match(/0x[0-9a-fA-F]{40}/)
+  if (!found) return setStatus("openStatus", "That has no election address in it (0x followed by 40 characters).", "err")
+  const url = electionUrl({ address: ethers.getAddress(found[0].toLowerCase()) })
+  if (url === location.pathname + location.search + location.hash) location.reload()
+  else location.href = url
+}
+
+async function copyVoterLink() {
+  const link = location.origin + electionUrl({ address: cfg.election })
+  try {
+    await navigator.clipboard.writeText(link)
+    $("shareBtn").textContent = "Link copied"
+  } catch {
+    prompt("Copy this link and send it to your voters:", link)
+  }
+  setTimeout(() => ($("shareBtn").textContent = "Copy voter link"), 2000)
 }
 
 // ---------------------------------------------------------------------------
@@ -806,7 +939,16 @@ async function renderResults() {
 // ---------------------------------------------------------------------------
 const short = (x) => String(x).slice(0, 10) + "…"
 
-$("connect").onclick = () => connect().catch((e) => log(e.message))
+$("connect").onclick = signIn
+$("signout").onclick = signOut
+$("openBtn").onclick = openElection
+$("openInput").addEventListener("keydown", (e) => e.key === "Enter" && openElection())
+$("shareBtn").onclick = copyVoterLink
+$("switchBtn").onclick = () => {
+  document.body.classList.toggle("picking")
+  if (document.body.classList.contains("picking")) $("openInput").focus()
+}
+window.addEventListener("hashchange", route)
 $("registerBtn").onclick = register
 $("voteBtn").onclick = vote
 $("refresh").onclick = refresh
@@ -835,4 +977,7 @@ $("importBtn").onclick = () => {
   }
 }
 
+route()
 init().catch((e) => log(e.message))
+// Wallet extensions announce themselves just after load; give them a moment.
+setTimeout(() => restoreSession().catch(() => {}), 300)

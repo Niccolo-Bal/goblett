@@ -3,119 +3,381 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>goblett</title>
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="Goblett: private, verifiable elections on Arc. A public voter list, anonymous ballots, no coordinator and no gas for voters." />
+    <title>Goblett: private voting on Arc</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body>
-    <header>
-      <h1>goblett <span id="network" class="badge" hidden></span></h1>
-      <div id="wallet">
-        <span id="account" class="muted">not connected</span>
-        <button id="connect">Connect MetaMask</button>
+  <!-- One page, four views (home, signin, app, create), switched by the URL hash (see route() in main.js). -->
+  <body data-view="home">
+    <header class="bar">
+      <a class="brand" href="#/"><img src="/logo.png" alt="" /><span>goblett</span></a>
+      <nav>
+        <a href="#/" data-nav="home">Home</a>
+        <a href="#/app" data-nav="app create">App</a>
+        <a href="https://github.com/Niccolo-Bal/goblet" target="_blank" rel="noopener">GitHub ↗</a>
+      </nav>
+      <div class="bar-right">
+        <a id="network" class="chip" hidden></a>
+        <a id="signinLink" class="btn small" href="#/signin">Sign in</a>
+        <div id="walletChip" class="chip" hidden>
+          <span class="dot"></span><span id="account"></span>
+          <button id="signout" class="link">Sign out</button>
+        </div>
       </div>
     </header>
 
-    <main>
-      <section id="election" class="card">
-        <h2 id="title">Loading election…</h2>
-        <dl id="info"></dl>
-        <button id="refresh" class="secondary needs-election">Refresh</button>
-        <button id="reclaimBtn" class="secondary" hidden>Return unused relayer funding to the creator</button>
+    <!-- ================================================================ Home -->
+    <main class="view" data-view="home">
+      <section class="hero">
+        <div>
+          <p class="label">Zero-knowledge voting on Arc</p>
+          <h1>Public voter list.<br />Private ballots.</h1>
+          <p class="lead">
+            Goblett runs elections where anyone can check who was allowed to vote and that every vote was counted
+            once, but nobody, including the organizer, can tell which wallet cast which ballot.
+          </p>
+          <div class="actions">
+            <a class="btn" href="#/app">Launch app</a>
+            <a class="btn ghost" href="https://github.com/Niccolo-Bal/goblet" target="_blank" rel="noopener">View on GitHub ↗</a>
+          </div>
+        </div>
+        <div class="hero-mark"><img src="/logo.png" alt="Goblett logo: a blue flame over a goblet" /></div>
       </section>
 
-      <section id="accountCard" class="card" hidden>
-        <h2>Your account</h2>
-        <p class="muted">
-          An optional public username for this wallet, so people creating elections can add you by name.
-          It is stored with your wallet address and plays no part in voting.
-        </p>
-        <div id="accountStatus"></div>
-        <button id="lookupBtn" class="secondary">Look up my username</button>
-        <input id="usernameInput" placeholder="username" maxlength="20" autocomplete="off" />
-        <button id="usernameBtn" class="secondary">Save username</button>
+      <section class="facts">
+        <div><strong>0</strong><span class="label">gas paid by voters</span></div>
+        <div><strong>0</strong><span class="label">admin keys after launch</span></div>
+        <div><strong>1</strong><span class="label">vote per voter, enforced on-chain</span></div>
+        <div><strong>2</strong><span class="label">ballot types: single choice, ranked</span></div>
       </section>
 
-      <section id="register" class="card needs-election">
-        <h2>1. Register (linked to your wallet)</h2>
-        <p class="muted">
-          Generates a secret identity in this browser and signs its public commitment with MetaMask.
-          It is published to Nostr and a relayer puts it on-chain, so your wallet needs no gas and can stay on
-          whatever network it is on (Ethereum, for example). The signature carries no vote.
-        </p>
-        <div id="regStatus"></div>
-        <button id="registerBtn" disabled>Create identity &amp; sign registration</button>
+      <section>
+        <p class="label">How it works</p>
+        <h2>Four steps, one contract</h2>
+        <div class="steps">
+          <article class="card">
+            <span class="label">01 / Create</span>
+            <h3>Fix the rules</h3>
+            <p>The organizer deploys an election with its candidates, voter wallets and schedule. After that nothing can be changed, by anyone.</p>
+          </article>
+          <article class="card">
+            <span class="label">02 / Register</span>
+            <h3>Sign once</h3>
+            <p>Each voter signs a message with their wallet. It adds an anonymous identity to the election and carries no vote.</p>
+          </article>
+          <article class="card">
+            <span class="label">03 / Vote</span>
+            <h3>Prove, don't reveal</h3>
+            <p>The browser builds a zero-knowledge proof that says "I am one of the registered voters" without saying which one.</p>
+          </article>
+          <article class="card">
+            <span class="label">04 / Count</span>
+            <h3>Verify the result</h3>
+            <p>The contract counts the ballots and rejects any second vote. The tally is on-chain for anyone to check.</p>
+          </article>
+        </div>
       </section>
 
-      <section id="vote" class="card needs-election">
-        <h2>2. Vote (anonymous)</h2>
-        <p class="muted">
-          Needs no wallet. Your browser proves "I hold one of the registered identities" without saying which,
-          and publishes only the proof to Nostr under a throwaway key, for any relayer to submit.
-        </p>
-        <label>Identity
-          <select id="identitySel"></select>
-        </label>
-        <div id="ballot"></div>
-        <button id="voteBtn" disabled>Generate proof &amp; vote</button>
-        <div id="voteStatus"></div>
+      <section>
+        <p class="label">Why Goblett</p>
+        <h2>Built so nobody has to be trusted</h2>
+        <div class="features">
+          <article class="card">
+            <h3>No coordinator</h3>
+            <p>There is no server that sees votes and no admin who can pause, edit or recount. The election is its contract.</p>
+          </article>
+          <article class="card">
+            <h3>No gas, no burner wallets</h3>
+            <p>Voters only sign. Relayers submit the transactions and are repaid from funding the organizer attaches to the election.</p>
+          </article>
+          <article class="card">
+            <h3>Any EVM wallet</h3>
+            <p>A voter's wallet can stay on Ethereum or any other network. An address is the same everywhere, and so is its signature.</p>
+          </article>
+          <article class="card">
+            <h3>Network privacy</h3>
+            <p>Registrations and votes travel through an Oblivious HTTP relay, so the servers that carry a ballot don't see the voter's IP address.</p>
+          </article>
+          <article class="card">
+            <h3>Single choice or ranked</h3>
+            <p>Run a first-past-the-post vote, or a ranked-choice vote with an instant runoff counted by the contract.</p>
+          </article>
+          <article class="card">
+            <h3>Open source</h3>
+            <p>Contracts, relayer and this site are public. Built on Semaphore, Nostr and Arc, with nothing hidden behind an API.</p>
+          </article>
+        </div>
       </section>
 
-      <section id="results" class="card needs-election">
-        <h2>Results</h2>
-        <div id="tally"></div>
+      <section class="limits card">
+        <div>
+          <p class="label">Know the limits</p>
+          <h2>What it does not hide</h2>
+        </div>
+        <ul>
+          <li>The running tally is public while voting is open.</li>
+          <li>A voter can choose to prove how they voted, so vote buying is not prevented.</li>
+          <li>Anonymity is only as large as the group: with three registered voters, a ballot is one of three.</li>
+          <li>Network privacy depends on the relay and gateway operators not sharing logs, and timing is still visible.</li>
+        </ul>
       </section>
 
-      <section class="card needs-election">
-        <h2>Backup / import identity</h2>
-        <p class="muted">The secret is the only way to vote. Anyone holding it can vote as you and see your vote.</p>
-        <button id="exportBtn" class="secondary">Show secret for selected identity</button>
-        <pre id="exported"></pre>
-        <input id="importTxt" placeholder="paste exported secret" />
-        <button id="importBtn" class="secondary">Import</button>
+      <section class="cta">
+        <h2>Read the code, then run an election</h2>
+        <p class="lead">Everything Goblett does is in the repository: the contracts, the audit notes and the known limits.</p>
+        <div class="actions">
+          <a class="btn" href="https://github.com/Niccolo-Bal/goblet" target="_blank" rel="noopener">Goblett on GitHub ↗</a>
+          <a class="btn ghost" href="#/create">Create an election</a>
+        </div>
       </section>
-
-      <details id="createCard" class="card">
-        <summary><h2>Create a new election</h2></summary>
-        <p class="muted">
-          Deploys a new election contract from your MetaMask wallet, which pays the gas and funds the relayers
-          (voters pay nothing). Everything is fixed at deployment: nobody, including you, can change the voters,
-          candidates or schedule afterwards.
-        </p>
-        <label>Title <input id="newTitle" placeholder="e.g. Club president 2026" /></label>
-        <label>Type
-          <select id="newKind">
-            <option value="fptp">First past the post (pick one)</option>
-            <option value="ranked">Ranked choice (instant runoff)</option>
-          </select>
-        </label>
-        <label>Candidates, one per line <textarea id="newCands" rows="4" placeholder="Alice&#10;Bob&#10;Carol"></textarea></label>
-        <label>Voters (whitelist), one wallet address or username per line. Empty = just your wallet.
-          <textarea id="newWhitelist" rows="3" placeholder="0x… or a username"></textarea>
-        </label>
-        <div id="whitelistPreview"></div>
-        <label>Registration ends (voting opens at the same moment) <input id="newRegEnd" type="datetime-local" /></label>
-        <label>Voting ends <input id="newVoteEnd" type="datetime-local" /></label>
-        <label>Minimum registrations before voting can open
-          <input id="newMinAnon" type="number" min="1" placeholder="default: 2, or 1 for a single voter" />
-        </label>
-        <label>Relayer bounty per registration/vote (<span class="sym"></span>), on top of their gas
-          <input id="newBounty" type="number" min="0" step="0.0001" value="0.0005" />
-        </label>
-        <label>Highest gas price you will refund (gwei)
-          <input id="newMaxGasPrice" type="number" min="0" step="1" />
-        </label>
-        <label>Relayer funding to send now (<span class="sym"></span>)
-          <input id="newFunding" type="number" min="0" step="any" />
-        </label>
-        <p id="fundingHint" class="muted"></p>
-        <p id="chainClock" class="muted"></p>
-        <button id="createBtn">Deploy with MetaMask</button>
-        <div id="createStatus"></div>
-        <div id="recent"></div>
-      </details>
-
-      <pre id="log"></pre>
     </main>
+
+    <!-- ============================================================= Sign in -->
+    <main class="view narrow" data-view="signin">
+      <section class="card signin">
+        <img src="/logo.png" alt="" />
+        <h2>Sign in</h2>
+        <p class="muted">
+          Connect the wallet you were whitelisted with to register for an election, or any wallet to create one.
+          Connecting only shares your address. It never costs gas.
+        </p>
+        <button id="connect" class="btn wide">Continue with MetaMask</button>
+        <div id="signinStatus"></div>
+        <p class="muted">
+          No MetaMask? <a href="https://metamask.io/download/" target="_blank" rel="noopener">Install it ↗</a><br />
+          Only casting a vote you already registered for? <a href="#/app">Open the app without a wallet</a>.
+        </p>
+      </section>
+    </main>
+
+    <!-- ================================================================= App -->
+    <main class="view" data-view="app">
+      <div class="tabs">
+        <a href="#/app" data-nav="app">Vote</a>
+        <a href="#/create" data-nav="create">Create election</a>
+      </div>
+
+      <!-- Shown until an election is open (and on request, to switch). -->
+      <section id="electionPicker" class="card picker">
+        <h2 id="title">Loading election…</h2>
+        <p class="muted">Paste an election's address or link. Organizers share it with their voters.</p>
+        <div class="row">
+          <input id="openInput" placeholder="0x… or https://goblett.xyz/?election=0x…" autocomplete="off" spellcheck="false" />
+          <button id="openBtn" class="btn">Open</button>
+        </div>
+        <div id="openStatus"></div>
+        <div id="recentVote" class="recent"></div>
+      </section>
+
+      <!-- What a voter does, shown while no election is open. -->
+      <section class="steps no-election">
+        <article class="card">
+          <span class="label">01 / Open</span>
+          <h3>Get the link</h3>
+          <p>The organizer sends every voter the election's link. It names the contract that holds the vote.</p>
+        </article>
+        <article class="card">
+          <span class="label">02 / Register</span>
+          <h3>Sign with your wallet</h3>
+          <p>While registration is open, sign in and sign one message. No transaction, no gas.</p>
+        </article>
+        <article class="card">
+          <span class="label">03 / Vote</span>
+          <h3>Vote from this browser</h3>
+          <p>When voting opens, come back in the same browser. Your voting identity is stored here and nowhere else.</p>
+        </article>
+        <article class="card">
+          <span class="label">Organizing?</span>
+          <h3>Run your own</h3>
+          <p>Set the candidates, voters and schedule, and deploy it from your wallet. <a href="#/create">Create an election</a></p>
+        </article>
+      </section>
+
+      <div class="needs-election">
+        <section class="card election">
+          <div class="election-head">
+            <div>
+              <p class="label" id="kindTag"></p>
+              <h2 id="electionTitle"></h2>
+            </div>
+            <span id="phasePill" class="pill"></span>
+          </div>
+          <ol id="timeline" class="timeline"></ol>
+          <div id="info" class="stats"></div>
+          <div class="meta">
+            <span id="electionMeta" class="mono"></span>
+            <span class="spacer"></span>
+            <button id="shareBtn" class="link">Copy voter link</button>
+            <button id="switchBtn" class="link">Open another</button>
+            <button id="refresh" class="link">Refresh</button>
+            <button id="reclaimBtn" class="btn small ghost" hidden>Return unused funding to creator</button>
+          </div>
+        </section>
+
+        <div class="columns">
+          <div class="stack">
+            <section id="register" class="card">
+              <p class="label">Step 1 / Linked to your wallet</p>
+              <h3>Register</h3>
+              <p class="muted">
+                Creates a secret voting identity in this browser and signs its public half with MetaMask. A relayer
+                puts it on-chain, so your wallet needs no gas and can stay on any network. The signature carries no vote.
+              </p>
+              <div id="regStatus"></div>
+              <button id="registerBtn" class="btn" disabled>Create identity &amp; sign registration</button>
+            </section>
+
+            <section id="vote" class="card">
+              <p class="label">Step 2 / Anonymous</p>
+              <h3>Vote</h3>
+              <p class="muted">
+                Needs no wallet. Your browser proves that it holds one of the registered identities, without saying
+                which, and sends only that proof.
+              </p>
+              <div id="ballot" class="ballot"></div>
+              <div id="voteStatus"></div>
+              <button id="voteBtn" class="btn" disabled>Generate proof &amp; vote</button>
+            </section>
+          </div>
+
+          <div class="stack">
+            <section id="results" class="card">
+              <p class="label">Live tally</p>
+              <h3>Results</h3>
+              <div id="tally"></div>
+            </section>
+
+            <section class="card">
+              <p class="label">Stored in this browser only</p>
+              <h3>Voting identity</h3>
+              <label>Identity used to vote
+                <select id="identitySel"></select>
+              </label>
+              <details>
+                <summary>Back up or import</summary>
+                <p class="muted">The secret is the only way to vote. Anyone holding it can vote as you and see your vote.</p>
+                <button id="exportBtn" class="btn small ghost">Show secret</button>
+                <pre id="exported"></pre>
+                <div class="row">
+                  <input id="importTxt" placeholder="Paste an exported secret" autocomplete="off" spellcheck="false" />
+                  <button id="importBtn" class="btn small ghost">Import</button>
+                </div>
+              </details>
+            </section>
+
+            <section id="accountCard" class="card" hidden>
+              <p class="label">Optional</p>
+              <h3>Username</h3>
+              <p class="muted">A public name for this wallet, so organizers can add you by name. It plays no part in voting.</p>
+              <div id="accountStatus"></div>
+              <div class="row">
+                <input id="usernameInput" placeholder="username" maxlength="20" autocomplete="off" spellcheck="false" />
+                <button id="usernameBtn" class="btn small ghost">Save</button>
+              </div>
+              <button id="lookupBtn" class="link">Look up my username</button>
+            </section>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============================================================== Create -->
+    <main class="view" data-view="create">
+      <div class="tabs">
+        <a href="#/app" data-nav="app">Vote</a>
+        <a href="#/create" data-nav="create">Create election</a>
+      </div>
+
+      <section id="createCard" class="card create">
+        <div class="form-head">
+          <div>
+            <p class="label">New election</p>
+            <h2>Create an election</h2>
+          </div>
+          <p class="muted">
+            Deploys a contract from your wallet, which pays the gas and funds the relayers so voters pay nothing.
+            Voters, candidates and schedule are fixed at deployment for everyone, including you.
+          </p>
+        </div>
+
+        <fieldset>
+          <legend class="label">01 / Basics</legend>
+          <div class="grid2">
+            <label>Title <input id="newTitle" placeholder="e.g. Club president 2026" /></label>
+            <label>Ballot type
+              <select id="newKind">
+                <option value="fptp">Single choice (first past the post)</option>
+                <option value="ranked">Ranked choice (instant runoff)</option>
+              </select>
+            </label>
+          </div>
+          <label>Candidates, one per line <textarea id="newCands" rows="4" placeholder="Alice&#10;Bob&#10;Carol"></textarea></label>
+        </fieldset>
+
+        <fieldset>
+          <legend class="label">02 / Voters</legend>
+          <label>Wallet addresses or usernames, one per line. Leave empty for just your wallet.
+            <textarea id="newWhitelist" rows="4" placeholder="0x… or a username" spellcheck="false"></textarea>
+          </label>
+          <div id="whitelistPreview"></div>
+          <label>Minimum registrations before voting can open
+            <input id="newMinAnon" type="number" min="1" placeholder="Default: 2, or 1 for a single voter" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend class="label">03 / Schedule</legend>
+          <div class="grid2">
+            <label>Registration ends, voting opens <input id="newRegEnd" type="datetime-local" /></label>
+            <label>Voting ends <input id="newVoteEnd" type="datetime-local" /></label>
+          </div>
+          <p id="chainClock" class="muted"></p>
+        </fieldset>
+
+        <fieldset>
+          <legend class="label">04 / Relayer funding</legend>
+          <div class="grid3">
+            <label><span>Funding to send now (<span class="sym"></span>)</span>
+              <input id="newFunding" type="number" min="0" step="any" />
+            </label>
+            <label><span>Bounty per relay (<span class="sym"></span>)</span>
+              <input id="newBounty" type="number" min="0" step="0.0001" value="0.0005" />
+            </label>
+            <label>Highest gas price refunded (gwei)
+              <input id="newMaxGasPrice" type="number" min="0" step="1" />
+            </label>
+          </div>
+          <p id="fundingHint" class="muted"></p>
+        </fieldset>
+
+        <div class="form-foot">
+          <div id="createStatus"></div>
+          <button id="createBtn" class="btn">Deploy with MetaMask</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <p class="label">This browser</p>
+        <h3>Elections you created</h3>
+        <div id="recent" class="recent"></div>
+      </section>
+    </main>
+
+    <details id="activity" class="activity">
+      <summary class="label">Activity log</summary>
+      <pre id="log"></pre>
+    </details>
+
+    <footer>
+      <a class="brand" href="#/"><img src="/logo.png" alt="" /><span>goblett</span></a>
+      <span class="muted">Private voting on Arc. Made for UBC 2026.</span>
+      <span class="spacer"></span>
+      <a href="#/app">App</a>
+      <a href="https://github.com/Niccolo-Bal/goblet" target="_blank" rel="noopener">GitHub ↗</a>
+    </footer>
+
     <script type="module" src="/main.js"></script>
   </body>
 </html>

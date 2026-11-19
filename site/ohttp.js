@@ -42,6 +42,8 @@ const DEV = Boolean(import.meta.env?.DEV)
 /// quietly fall back to a direct connection, which would expose the address this hides.
 export function ohttp() {
   if (typeof location === "undefined") return Promise.resolve(null) // not a browser (tests)
+  // The /local development chain is not served by the gateway (and has nothing to hide).
+  if (location.pathname.split("/")[1] === "local") return Promise.resolve(null)
   return (loaded ??= fetch("/ohttp.json", { cache: "no-store" }).then(async (r) => {
     const isJson = r.ok && r.headers.get("Content-Type")?.includes("json")
     const cfg = isJson ? await r.json() : null
