@@ -99,6 +99,24 @@
           One tap with your wallet confirms you're on the voter list and creates a private <b>voter key</b> in this
           browser. It's free and doesn't reveal your vote.
         </p>
+        <div id="keyForge" class="forge" hidden>
+          <div class="forge-stage" aria-hidden="true">
+            <div class="forge-key">
+              <span class="forge-label">Voter key</span>
+              <span class="forge-text" id="forgeText"></span>
+              <span class="forge-note" id="forgeNote"></span>
+            </div>
+            <span class="forge-chip"></span>
+            <div class="forge-list">
+              <span class="forge-list-label" id="forgeListLabel">Voter list</span>
+              <span class="forge-row"></span><span class="forge-row"></span><span class="forge-row"></span>
+              <span class="forge-row forge-new"></span>
+            </div>
+          </div>
+          <ol class="seal-steps" id="forgeSteps">
+            <li>Create</li><li>Sign</li><li>Send</li><li>Registered</li>
+          </ol>
+        </div>
         <div id="regStatus"></div>
         <button id="registerBtn" class="big" disabled>Register with MetaMask</button>
         <details class="how">

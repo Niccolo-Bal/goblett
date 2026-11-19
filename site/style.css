@@ -355,6 +355,67 @@ body[data-phase="ended"] #results { order: -1; }
 /* Once counted the token is inside the box; hide it so it can't peek out while the stage shrinks. */
 .sealer[data-state="counted"] .seal-token { opacity: 0; }
 
+/* Registering: a voter key is created in a card, then a token of its public half travels into the voter list.
+   States live on #keyForge[data-state]: forging → signing → sending → recording → registered. */
+.forge { margin: 18px 0 6px; }
+.forge-stage { position: relative; height: 200px; overflow: hidden; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.forge-key {
+  position: absolute; left: 4%; top: 50%; width: 46%; height: 118px; transform: translateY(-50%);
+  display: grid; align-content: center; gap: 8px; padding: 0 16px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.forge-label, .forge-list-label { font: 500 10px/11px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); transition: color 0.3s; }
+.forge-text { font: 500 15px/1.2 var(--mono); letter-spacing: 0.04em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.3s; }
+.forge-note { font: 13px/1.3 var(--sans); color: var(--muted); }
+.forge-list {
+  position: absolute; right: 4%; top: 50%; width: 38%; transform: translateY(-50%);
+  display: grid; gap: 10px; padding: 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); transition: border-color 0.3s;
+}
+.forge-row { height: 8px; border-radius: 4px; background: var(--tint); }
+.forge-row.forge-new { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); transition: background-color 0.4s, box-shadow 0.4s; }
+/* The token. Its landing spot is the empty fourth row: list top (100px - 111px/2) + padding, label and three rows. */
+.forge-chip {
+  position: absolute; left: 27%; top: 50%; width: 44px; height: 12px; border-radius: 6px;
+  background: var(--accent); opacity: 0; transform: translate(-50%, -50%) scale(0.4);
+}
+
+.forge[data-state="forging"] .forge-key { border-color: var(--accent); animation: forge-glow 1.2s ease-in-out infinite; }
+.forge[data-state="forging"] .forge-text { color: var(--accent); }
+@keyframes forge-glow { 50% { box-shadow: 0 0 0 4px var(--accent-tint); } }
+.forge[data-state="signing"] .forge-key { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-tint); }
+.forge[data-state="signing"] .forge-note { color: var(--accent); }
+
+.forge[data-state="sending"] .forge-chip { animation: forge-send 1s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
+@keyframes forge-send {
+  0% { left: 27%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  25% { left: 27%; top: 50%; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { left: 77%; top: 137px; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.forge:is([data-state="recording"], [data-state="registered"]) .forge-chip { left: 77%; top: 137px; transform: translate(-50%, -50%) scale(1); }
+.forge[data-state="recording"] .forge-chip { opacity: 1; animation: forge-wait 1.4s ease-in-out infinite; }
+@keyframes forge-wait { 50% { opacity: 0.35; } }
+.forge[data-state="recording"] .forge-list { border-color: var(--accent); }
+
+.forge[data-state="registered"] .forge-chip { opacity: 0; transition: opacity 0.3s; }
+.forge[data-state="registered"] .forge-new { background: var(--accent); box-shadow: none; }
+.forge[data-state="registered"] .forge-list { border-color: var(--accent); }
+.forge[data-state="registered"] .forge-list-label { color: var(--accent); }
+.forge[data-state="registered"] .forge-list-label::before { content: "✓  "; }
+.forge[data-state="registered"] .forge-key { border-color: var(--ink-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .forge *, .forge *::before { animation: none !important; transition: none !important; }
+  .forge[data-state="sending"] .forge-chip { left: 77%; top: 137px; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.forge.instant, .forge.instant * { transition: none !important; animation: none !important; }
+@media (max-width: 480px) {
+  .forge-key { padding: 0 12px; }
+  .forge-text { font-size: 13px; letter-spacing: 0; }
+  .forge-note { font-size: 12px; }
+}
+
 /* "How it works" dialog on the home screen */
 .hero h1 { margin-bottom: 28px; }
 .how-dialog {

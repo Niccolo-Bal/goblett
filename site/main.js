@@ -355,6 +355,7 @@ const errMsg = (e) => e?.error?.message ?? e?.info?.error?.message ?? e?.shortMe
 function renderRegister() {
   const btn = $("registerBtn")
   if (registering) return // keep the progress message of a registration in flight
+  $("keyForge").hidden = true
   btn.disabled = true
   btn.textContent = "Register with MetaMask"
   btn.hidden = false
@@ -370,7 +371,12 @@ function renderRegister() {
   }
   if (state.registered) {
     btn.hidden = true
-    const local = loadIdentities().some((x) => x.label === account.toLowerCase())
+    const mine = loadIdentities().find((x) => x.label === account.toLowerCase())
+    const local = Boolean(mine)
+    if (mine) {
+      forgeStop(commitmentLabel(mine.identity))
+      forgeState("registered", { instant: $("keyForge").dataset.state !== "registered" })
+    }
     return setStatus(
       "regStatus",
       local ? "You're registered. Save your voter key below, then come back when voting opens." : "This wallet is already registered, but its voter key isn't in this browser. Load it below to vote.",
@@ -381,12 +387,52 @@ function renderRegister() {
   btn.disabled = false
 }
 
+// The registration animation. Only the identity *commitment* (the public half, which goes
+// on-chain anyway) is ever shown; the secret key never reaches the screen.
+const FORGE_STEP = { forging: 0, signing: 1, sending: 2, recording: 2, registered: 4 }
+const FORGE_NOTE = {
+  forging: "Creating it in this browser…",
+  signing: "Approve in MetaMask",
+  sending: "Sending its public half",
+  recording: "Being added to the list",
+  registered: "Saved in this browser",
+}
+const commitmentLabel = (identity) => {
+  const hex = identity.commitment.toString(16).padStart(64, "0")
+  return `0x${hex.slice(0, 4)}…${hex.slice(-4)}`
+}
+function forgeState(name, { instant = false } = {}) {
+  const el = $("keyForge")
+  if (instant) el.classList.add("instant")
+  el.hidden = false
+  el.dataset.state = name
+  $("forgeNote").textContent = FORGE_NOTE[name]
+  $("forgeListLabel").textContent = name === "registered" ? "Registered" : name === "recording" ? "Recording" : "Voter list"
+  const at = FORGE_STEP[name]
+  $("forgeSteps").querySelectorAll("li").forEach((li, i) => (li.className = i < at ? "done" : i === at ? "current" : ""))
+  if (instant) requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("instant")))
+}
+let forgeTimer
+function forgeScramble() {
+  clearInterval(forgeTimer)
+  forgeTimer = setInterval(() => ($("forgeText").textContent = `0x${randHex(4)}…${randHex(4)}`), 55)
+}
+function forgeStop(final) {
+  clearInterval(forgeTimer)
+  if (final !== undefined) $("forgeText").textContent = final
+}
+
 let registering = false
 async function register() {
   $("registerBtn").disabled = true
   registering = true
   let step = "check wallet network"
   try {
+    $("registerBtn").hidden = true
+    setStatus("regStatus", "")
+    forgeState("forging")
+    forgeScramble()
+    const forging = wait(reducedMotion() ? 0 : 1100)
     // The wallet may stay on whatever network it is on (Ethereum, an L2, ...): an address
     // is the same on every EVM chain, and the election accepts a signature made elsewhere.
     const walletChain = Number(BigInt(await eth.request({ method: "eth_chainId" })))
@@ -401,6 +447,8 @@ async function register() {
       identity = new Identity()
       saveIdentity(account, identity)
     }
+    await forging
+    forgeStop(commitmentLabel(identity))
     // Wallets only sign typed data whose domain names their active network. On the
     // election's chain that is the plain Register message. On any other network it is
     // RegisterOn: the domain names the wallet's network, and the election's chain and
@@ -423,6 +471,7 @@ async function register() {
       : { wallet: account, identityCommitment: identity.commitment, electionChainId: cfg.chainId, election: cfg.election }
     // Ask MetaMask directly (not via ethers' signer) so its own error message reaches the page.
     const payload = ethers.TypedDataEncoder.getPayload(domain, types, value)
+    forgeState("signing")
     setStatus("regStatus", "Approve the request in MetaMask. It's a free signature, not a transaction.", "muted")
     step = "sign (eth_signTypedData_v4)"
     const sign = () => eth.request({ method: "eth_signTypedData_v4", params: [account.toLowerCase(), JSON.stringify(payload)] })
@@ -442,27 +491,34 @@ async function register() {
     if (ethers.verifyTypedData(domain, types, value, signature) !== account) throw new Error("signature does not match the connected wallet")
     step = "publish to Nostr"
     setStatus("regStatus", "Sending your registration…", "muted")
-    const sent = await publish(cfg, {
+    forgeState("sending")
+    const [sent] = await Promise.all([publish(cfg, {
       type: "register",
       wallet: account,
       identityCommitment: identity.commitment.toString(),
       signature,
       ...(onElectionChain ? {} : { signingChainId: walletChain }),
-    })
+    }), wait(reducedMotion() ? 0 : 1100)])
     log(`registration published${sent.private ? " through the private channel" : ""} to ${sent.accepted.join(", ")} (event ${short(sent.id)})`)
     step = "wait for a relayer to put it on-chain"
+    forgeState("recording")
     setStatus("regStatus", "Recording your registration on-chain. This usually takes under a minute…", "muted")
     const wallet = account
     const priv = await privateElection()
     const res = await confirm(cfg, sent.id, () => priv.hasRegistered(wallet))
     log(`registered on-chain${res.txHash ? `, tx ${res.txHash}` : ""}`)
     walletCache = undefined
+    forgeState("registered")
+    await wait(reducedMotion() ? 0 : 900)
     registering = false
     await refresh()
     $("keyCard").scrollIntoView({ behavior: "smooth", block: "start" })
   } catch (e) {
     console.error(e)
     registering = false
+    forgeStop()
+    $("keyForge").hidden = true
+    $("registerBtn").hidden = false
     setStatus("regStatus", `Registration didn't go through: ${errMsg(e)} (step: ${step}; details in the activity log)`, "err")
     $("registerBtn").disabled = false
     await walletDiagnostics(e, step)
