@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Goblett · Anonymous elections on Arc</title>
-    <meta name="description" content="Trustless anonymous voting on Arc. Wallets register, browsers vote with a zero-knowledge proof. No coordinator, no gas for voters, one vote per identity." />
+    <meta name="description" content="Anonymous voting on Arc for clubs, student governments and DAOs. Voters register with a wallet and vote from the browser with a zero-knowledge proof. Voters pay no gas." />
+    <link rel="icon" type="image/png" href="/goblett_logo.png" />
     <meta name="theme-color" content="#060708" />
     <script>
       // Old links: /?election=0x… and /testnet opened the app at the site root.
@@ -28,10 +29,9 @@
       <div class="grain" aria-hidden="true"></div>
       <header class="topbar">
         <div class="wrap">
-          <a class="brand" href="/">Goblett</a>
+          <a class="brand" href="/"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett</a>
           <nav class="nav home-nav" aria-label="Main">
             <a href="#how">How it works</a>
-            <a href="/app.html">Elections</a>
             <a href="#limits">Limits</a>
             <a href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
             <a class="btn btn-ghost btn-sm" href="/app.html">Open the app</a>
@@ -39,84 +39,65 @@
         </div>
       </header>
       <div class="wrap hero-body">
-        <p class="hero-aside">Anonymous on-chain elections for clubs, DAOs and student bodies. No coordinator. No gas for voters.</p>
-        <div class="hero-foot">
-          <div class="hero-copy">
-            <p class="eyebrow">Trustless anonymous voting on Arc</p>
-            <h1>Every vote counted.<br /><span>No voter named.</span></h1>
-            <div class="actions">
-              <a class="btn btn-lg" href="/app.html#new">Start an election</a>
-              <a class="link-arrow" href="#how">How the proof works →</a>
-            </div>
+        <div class="hero-copy">
+          <h1>Anonymous voting,<br /><span>counted on-chain.</span></h1>
+          <p class="hero-sub">For clubs, student governments and DAOs. Voters register once with a wallet, then vote from the browser with a zero-knowledge proof. Voters pay no gas.</p>
+          <div class="actions">
+            <a class="btn btn-lg" href="/app.html#new">Start an election</a>
+            <a class="link-arrow" href="/app.html">Open an election link</a>
           </div>
-          <a class="live-card" href="/app.html">
-            <span class="row"><span>YOUR ELECTIONS</span><span>ARC · 5042</span></span>
-            <strong>Open an election by link</strong>
-            <span class="faint">Paste the link or contract address you were sent, or pick one you created from this browser.</span>
-          </a>
         </div>
       </div>
     </section>
 
     <main>
-      <section class="section" aria-labelledby="problem">
-        <div class="wrap split">
-          <h2 id="problem" class="label side">The problem with on-chain votes</h2>
-          <div class="main">
-            <p class="statement">Most on-chain voting asks you to trust a coordinator, publish your choice, or fund a fresh burner wallet through a privacy coin. <span class="grey">Goblett asks for none of that.</span></p>
-            <div class="chips">
-              <span>a trusted coordinator</span>
-              <span>votes tied to wallets</span>
-              <span>burner wallets per election</span>
-              <span>gas for voters</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="how" class="section" aria-labelledby="how-h">
+      <section id="how" class="section how" aria-labelledby="how-h">
         <div class="wrap">
           <div class="section-head">
-            <h2 id="how-h">How a vote travels</h2>
-            <p>Three phases, fixed at deployment. Nobody, including the person who created the election, can change the voters, candidates or schedule afterwards.</p>
+            <h2 id="how-h">How a vote reaches Arc</h2>
+            <p>Registration and voting take different routes. Each hop sees only part of the picture, and no hop sees both your wallet and your ballot.</p>
           </div>
-          <ol class="steps">
-            <li>
-              <span class="num">01</span>
-              <div class="body">
-                <h3>Register with your wallet</h3>
-                <p>Your browser makes a secret identity and your wallet signs its public commitment. The signature carries no vote, and your wallet never needs gas or to switch networks.</p>
-              </div>
-              <p class="path">wallet signature → OHTTP → Nostr topic goblett-5042 → relayer → Semaphore group</p>
-            </li>
-            <li>
-              <span class="num">02</span>
-              <div class="body">
-                <h3>Vote from your browser, not your wallet</h3>
-                <p>A zero-knowledge proof says "I hold one of the registered identities" without saying which. It leaves under a throwaway key for any relayer to submit.</p>
-              </div>
-              <p class="path">Semaphore proof + nullifier → OHTTP → Nostr → any relayer → election contract</p>
-            </li>
-            <li>
-              <span class="num">03</span>
-              <div class="body">
-                <h3>Read the count yourself</h3>
-                <p>The tally is public on Arc by design. Each nullifier can be spent once, so each identity votes once. First past the post or ranked choice.</p>
-              </div>
-              <p class="path">tally() · winners() · readable by anyone, changeable by no one</p>
-            </li>
-          </ol>
+
+          <div class="flow dots">
+            <div class="flow-head">
+              <div class="side reg"><h3>Registration</h3><p>Once, with your wallet. Signing costs nothing and works on any network.</p></div>
+              <div class="side vote"><h3>Voting</h3><p>From the browser, with no wallet and no gas.</p></div>
+            </div>
+            <ol class="stops">
+              <li class="stop">
+                <strong class="hop">Your device</strong>
+                <p class="side reg"><span class="tag">Registration</span>Your wallet signs a commitment to a secret kept in this browser.</p>
+                <p class="side vote"><span class="tag">Voting</span>Your browser proves it holds one registered secret, without saying which.</p>
+              </li>
+              <li class="stop">
+                <strong class="hop">OHTTP relay</strong>
+                <p class="side reg"><span class="tag">Registration</span>Sees your IP address. The message stays encrypted.</p>
+                <p class="side vote"><span class="tag">Voting</span>Sees your IP address. The ballot stays encrypted.</p>
+              </li>
+              <li class="stop">
+                <strong class="hop">Nostr and a relayer</strong>
+                <p class="side reg"><span class="tag">Registration</span>See your wallet and commitment.</p>
+                <p class="side vote"><span class="tag">Voting</span>See the ballot and proof, not who sent them.</p>
+              </li>
+              <li class="stop end">
+                <strong class="hop">Arc</strong>
+                <p class="side reg"><span class="tag">Registration</span>Records that your wallet registered.</p>
+                <p class="side vote"><span class="tag">Voting</span>Counts the ballot. Its nullifier blocks a second vote.</p>
+              </li>
+            </ol>
+          </div>
         </div>
       </section>
 
       <section class="section" aria-labelledby="feat">
         <div class="wrap">
           <div class="section-head">
-            <h2 id="feat">Everything an election needs. <span class="grey">Nothing that names a voter.</span></h2>
+            <h2 id="feat">Ballots, voters and costs</h2>
+            <p>The candidates, voter list and schedule are fixed when you deploy. Nobody can change them afterwards, including you.</p>
           </div>
           <div class="bento">
             <div class="tile">
-              <div><h3>Ranked choice, counted on-chain</h3><p>Instant runoff runs in the contract, so the winner is the same for everyone who checks.</p></div>
+              <div><h3>Ranked choice, counted on-chain</h3><p>The contract runs the instant runoff, so everyone who checks gets the same winner.</p></div>
               <div class="mini-list" aria-hidden="true">
                 <div><span class="rk">1</span>Carol</div>
                 <div><span class="rk two">2</span>Alice</div>
@@ -124,27 +105,27 @@
               </div>
             </div>
             <div class="tile">
-              <div><h3>Add voters by name</h3><p>Members claim a public username once. You paste names; Goblett resolves the wallets before anything is fixed on-chain.</p></div>
+              <div><h3>Add voters by username</h3><p>Paste usernames or addresses. Goblett resolves each name to a wallet before you deploy.</p></div>
               <div class="mini-table" aria-hidden="true">
-                <div><span>maya</span><span class="faint">0x41c2…9e ✓</span></div>
-                <div><span>jonah_k</span><span class="faint">0x0d77…13 ✓</span></div>
-                <div><span>priya</span><span class="err">no account yet</span></div>
+                <div><span>treasurer</span><span class="faint">0x41c2…9e</span></div>
+                <div><span>k.osei</span><span class="faint">0x0d77…13</span></div>
+                <div><span>vp_events</span><span class="err">no account yet</span></div>
               </div>
             </div>
             <div class="tile">
-              <div><h3>Proofs made on the voter's device</h3><p>Ten to thirty seconds in the browser. Every step is shown, so nobody wonders whether it froze.</p></div>
-              <div class="prog" aria-hidden="true">
-                <div class="faint"><span>✓ voter group rebuilt</span><span>0.4s</span></div>
-                <div><span>◐ generating proof</span><span style="color: var(--blue-soft)">12.1s</span></div>
-                <div class="bar"><i style="width: 62%"></i></div>
-                <div style="color: var(--dim)"><span>○ sent privately</span><span>—</span></div>
-                <div style="color: var(--dim)"><span>○ counted on Arc</span><span>—</span></div>
-              </div>
+              <div><h3>Proofs made on the voter's device</h3><p>10 to 30 seconds in the browser, with each step and its timer on screen.</p></div>
+              <ol class="prog" aria-hidden="true">
+                <li class="done"><span>voter group rebuilt</span><span>0.4s</span></li>
+                <li class="active"><span>generating proof</span><span>12.1s</span></li>
+                <li class="bar"><i style="width: 62%"></i></li>
+                <li><span>sent privately</span><span>—</span></li>
+                <li><span>counted on Arc</span><span>—</span></li>
+              </ol>
             </div>
             <div class="tile">
-              <div><h3>Costs you can predict</h3><p>Gas on Arc is paid in USDC, so an election costs the same every time. Whatever the relayers don't use comes back to you.</p></div>
+              <div><h3>Gas paid in USDC</h3><p>You fund the relayers when you deploy. Whatever they don't spend comes back after voting ends.</p></div>
               <div class="mini-table" aria-hidden="true">
-                <div><span>bounty per registration / vote</span><span>0.0005 USDC</span></div>
+                <div><span>bounty per registration or vote</span><span>0.0005 USDC</span></div>
                 <div><span>gas refunded up to</span><span>2× today's price</span></div>
                 <div><span>unused funding</span><span>reclaimable</span></div>
               </div>
@@ -153,36 +134,23 @@
         </div>
       </section>
 
-      <section class="section" aria-labelledby="who">
-        <div class="wrap split">
-          <h2 id="who" class="label side">Built for</h2>
-          <dl class="audience">
-            <div><dt>Clubs &amp; societies</dt><dd>Add members by username. They connect a wallet once to register and never need gas to vote.</dd></div>
-            <div><dt>Student government</dt><dd>Ranked-choice ballots with instant runoff, and a minimum number of registrations before voting opens so no one stands out.</dd></div>
-            <div><dt>DAOs</dt><dd>Whitelist wallet addresses. Members vote without linking their treasury wallet to their choice.</dd></div>
+      <section id="limits" class="section" aria-labelledby="limits-h">
+        <div class="wrap">
+          <div class="section-head"><h2 id="limits-h">Known limits</h2></div>
+          <dl class="limits">
+            <div><dt>Your secret lives in your browser</dt><dd>It is the only way to vote. Back it up from the election page; anyone holding it can vote as you.</dd></div>
+            <div><dt>The tally is public while voting runs</dt><dd>Counts update as votes land. Who cast them does not appear anywhere.</dd></div>
+            <div><dt>We run today's OHTTP relay</dt><dd>Independent relays would remove that last point of trust. They are next on the roadmap.</dd></div>
           </dl>
         </div>
       </section>
 
-      <section id="limits" class="section" aria-labelledby="limits-h">
-        <div class="wrap">
-          <div class="section-head"><h2 id="limits-h">The fine print, up front</h2></div>
-          <div class="limits">
-            <div><h3>Your secret lives in your browser</h3><p>It's the only way to vote. Back it up from the election page; anyone holding it can vote as you.</p></div>
-            <div><h3>The tally is live and public</h3><p>Counts update as votes land. Who cast them doesn't appear anywhere.</p></div>
-            <div><h3>The creator funds the relayers</h3><p>Gas plus a small bounty per action, in USDC. Whatever is unused returns to the creator after voting ends.</p></div>
-            <div><h3>Today's OHTTP relay is ours</h3><p>Independent relays would remove that last point of trust. It's the next thing on the roadmap.</p></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" aria-labelledby="relay">
+      <section class="section relay" aria-labelledby="relay">
         <div class="wrap split" style="align-items: center">
           <div class="main" style="flex: 1 1 440px; gap: 20px">
-            <p class="eyebrow">Open relayer network</p>
-            <h2 id="relay" class="h2">Run a relayer. Get paid to carry votes.</h2>
-            <p class="muted" style="margin: 0; font-size: 17px">Relayers listen on Nostr, check each proof and submit it. The election refunds their gas plus a bounty. A relayer can't change a ballot without breaking its proof, so none has to be trusted.</p>
-            <div><a class="link-arrow" href="https://github.com/Niccolo-Bal/goblett/tree/main/relayer" rel="noopener">Relayer guide on GitHub →</a></div>
+            <h2 id="relay" class="h2">Relayers earn a bounty per vote</h2>
+            <p class="muted" style="margin: 0; font-size: 17px">A relayer listens on Nostr, checks each proof and submits it. The election refunds its gas plus the bounty. Changing a ballot breaks its proof, so no relayer has to be trusted.</p>
+            <div><a class="link-arrow" href="https://github.com/Niccolo-Bal/goblett/tree/main/relayer" rel="noopener">Read the relayer guide</a></div>
           </div>
           <pre class="terminal" style="flex: 1 1 440px; min-width: 0"><span class="p">$</span> cd relayer
 <span class="p">$</span> pip install -r requirements.txt
@@ -192,7 +160,7 @@
         </div>
       </section>
 
-      <section class="close" aria-labelledby="close">
+      <section class="close dots" aria-labelledby="close">
         <div class="glow" aria-hidden="true"></div>
         <div class="wrap">
           <h2 id="close">Hold your next<br />election in the dark.</h2>
@@ -200,16 +168,17 @@
         </div>
         <footer class="footer">
           <div class="wrap">
-            <span class="brand" style="font-size: 22px">Goblett</span>
+            <span class="brand" style="font-size: 22px"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett</span>
             <nav aria-label="Footer">
               <a href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
               <a href="/app.html">Elections</a>
               <a href="https://github.com/Niccolo-Bal/goblett/tree/main/relayer" rel="noopener">Run a relayer</a>
-              <span>Made at UBC Hackathon 2026</span>
+              <span>UBC Hackathon 2026</span>
             </nav>
           </div>
         </footer>
       </section>
     </main>
+    <script type="module" src="/home.js"></script>
   </body>
 </html>
