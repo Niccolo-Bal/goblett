@@ -19,10 +19,9 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --r: 12px;
   --float: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 12px 32px -18px rgba(0, 0, 0, 0.22);
-  /* Liquid metal: bright and dark streaks with a few iridescent glints, turned by --spin (animated). */
-  --metal: conic-gradient(from var(--spin) at 50% 50%, #f4f4f6, #74747e 7%, #ffffff 14%, #2c2c33 21%, #d9d9df 30%, #ffe46a 33%,
-    #ff6040 35%, #3c9cff 37%, #f1f1f4 40%, #9a9aa4 52%, #ffffff 63%, #3b3b44 74%, #ffe46a 77%, #ff6040 78.5%, #3c9cff 80%,
-    #d2d2d8 84%, #f4f4f6);
+  /* Liquid metal for buttons: bright and dark streaks only (the colour glints stay on the round token), turned by --spin. */
+  --metal: conic-gradient(from var(--spin) at 50% 50%, #f4f4f6, #74747e 7%, #ffffff 14%, #2c2c33 21%, #d9d9df 30%,
+    #8a8a94 38%, #f1f1f4 44%, #9a9aa4 52%, #ffffff 63%, #3b3b44 74%, #c4c4cb 80%, #6c6c76 86%, #f4f4f6);
   --metal-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 10px 24px -12px rgba(0, 0, 0, 0.45);
   /* The frosted plate that sits still on top of the moving metal and carries the label. */
   --glass: rgba(226, 226, 231, 0.7);
