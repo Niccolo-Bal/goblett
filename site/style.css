@@ -30,7 +30,7 @@
     linear-gradient(#b9c3d6, #b9c3d6);
   --metal-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 10px 24px -12px rgba(0, 0, 0, 0.45);
   /* The frosted plate that sits still on top of the moving metal and carries the label. */
-  --glass: rgba(228, 228, 233, 0.5);
+  --glass: rgba(232, 233, 238, 0.78);
   --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.07);
   --on-chrome: #161615;
   /* ember.goblett.xyz's glow blues */
@@ -57,7 +57,7 @@
     --warn: #e0a34a;
     --float: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 16px 36px -18px rgba(0, 0, 0, 0.8);
     --metal-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 10px 24px -12px rgba(0, 0, 0, 0.9);
-    --glass: rgba(34, 34, 39, 0.55);
+    --glass: rgba(30, 31, 36, 0.8);
     --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
     --on-chrome: #f2f2ee;
   }
@@ -541,7 +541,7 @@ body.intro-open { overflow: hidden; }
   opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s;
 }
 .term-bar kbd { font: 500 12px var(--mono); color: #161615; background: rgba(0, 0, 0, 0.06); border-radius: 6px; padding: 3px 6px; }
-.term-bar button { --on-chrome: #161615; --glass: rgba(228, 228, 233, 0.5); --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.07); }
+.term-bar button { --on-chrome: #161615; --glass: rgba(232, 233, 238, 0.78); --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.07); }
 .intro[data-phase="ready"] .term-bar { opacity: 1; transform: none; }
 .intro:not([data-phase="typing"]):not([data-phase="ready"]) .caret { display: none; }
 .intro[data-phase="collapsing"] .term { transform: scale(0.26); border-radius: 50%; opacity: 0; }
