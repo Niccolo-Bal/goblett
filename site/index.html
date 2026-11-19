@@ -8,60 +8,64 @@
   </head>
   <body>
     <header>
-      <a id="brand" class="brand" href="/">goblett <span id="network" class="badge" hidden></span></a>
+      <a id="brand" class="brand" href="/">
+        <span class="brand-name">goblett <span id="network" class="badge" hidden></span></span>
+        <span class="brand-sub">Private voting on Arc.</span>
+      </a>
+      <nav class="toolbar" aria-label="Site">
+        <a id="homeLink" class="tool" href="/" aria-label="Home">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 9.2 10 4l6.5 5.2V16a.5.5 0 0 1-.5.5h-3.5v-4h-5v4H4a.5.5 0 0 1-.5-.5z" /></svg>
+        </a>
+        <button id="guideBtn" class="tool" aria-label="How it works">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.6 7.4a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.6M10 14.6v.2" /><circle cx="10" cy="10" r="7" /></svg>
+        </button>
+      </nav>
       <div id="wallet">
         <span id="account" class="pill-muted">not connected</span>
         <button id="connect" class="small">Connect wallet</button>
       </div>
     </header>
 
+    <!-- Guided intro: a terminal that "runs" goblett, then a chrome ballot token that explains it -->
+    <div id="intro" class="intro" hidden>
+      <div id="introTerm" class="term">
+        <div class="term-glass" aria-hidden="true"><span class="liquid term-blob"></span><span class="liquid term-blob two"></span></div>
+        <div class="term-body">
+          <div class="term-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          <p class="term-dim">voter@goblett ~ zsh</p>
+          <p class="term-dim"># a private vote, start to finish</p>
+          <p class="term-cmd"><span class="term-dim">~ $</span> <span id="termCmd"></span><span class="caret" id="termCaret"></span></p>
+          <div id="termOut" class="term-out"></div>
+        </div>
+        <div class="term-bar" id="termBar">
+          <span>Press <kbd>return ⏎</kbd> to run</span>
+          <button id="termRun" class="small">Run ⏎</button>
+        </div>
+      </div>
+      <div id="introGuide" class="guide" hidden>
+        <span class="liquid guide-token" aria-hidden="true"></span>
+        <p id="guideLine" class="guide-line" aria-live="polite"></p>
+        <div id="guideActions" class="guide-actions"></div>
+        <ol id="guideDots" class="guide-dots" aria-hidden="true"></ol>
+      </div>
+      <button id="introSkip" class="intro-skip link">Skip intro</button>
+    </div>
+
     <main>
       <!-- Home: shown when no election is open -->
       <section id="home">
         <div class="hero">
-          <p class="eyebrow">Anonymous elections on Arc</p>
-          <h1>Vote in private.<br />Verify in public.</h1>
-          <button id="howBtn" class="secondary">How it works</button>
-        </div>
-        <dialog id="howDialog" class="how-dialog" aria-labelledby="howTitle">
-          <div class="how-head">
-            <h2 id="howTitle">How it works</h2>
-            <button id="howClose" class="link" aria-label="Close">Close</button>
+          <span class="liquid hero-token" aria-hidden="true"></span>
+          <h1><span>Vote in private.</span> <span class="tone">Verify in public.</span></h1>
+          <div class="hero-actions">
+            <button id="joinTile">Join an election</button>
+            <button id="createTile" class="secondary">Start one</button>
           </div>
-          <ol class="how-steps">
-            <li>
-              <span class="how-num">01</span>
-              <div><b>Register</b><p>Your wallet confirms you're on the voter list and creates a private voter key in this browser. It's free.</p></div>
-            </li>
-            <li>
-              <span class="how-num">02</span>
-              <div><b>Vote</b><p>Tap your choice. Your ballot is sealed and sent without your wallet, so nobody, not even the organiser, can trace it to you.</p></div>
-            </li>
-            <li>
-              <span class="how-num">03</span>
-              <div><b>Verify</b><p>The count is public on-chain, so anyone can check the result.</p></div>
-            </li>
-          </ol>
-          <p class="muted how-foot">Voters pay nothing. The organiser covers the costs when they start the election.</p>
-          <button id="howDone" class="big">Got it</button>
-        </dialog>
-        <div id="homeMsg"></div>
-        <div class="tiles">
-          <button class="tile" id="joinTile">
-            <span class="tile-num">01</span>
-            <span class="tile-title">Join an election</span>
-            <span class="tile-sub">Open the link you were sent</span>
-            <span class="tile-arrow">→</span>
-          </button>
-          <button class="tile" id="createTile">
-            <span class="tile-num">02</span>
-            <span class="tile-title">Start an election</span>
-            <span class="tile-sub">Four short steps</span>
-            <span class="tile-arrow">→</span>
-          </button>
+          <button id="howBtn" class="link">How it works</button>
         </div>
+        <div id="homeMsg"></div>
         <div id="joinBox" class="card" hidden>
-          <h2>Open your election</h2>
+          <h2>Open your election <span class="tone">Paste the link you were sent.</span></h2>
           <button id="pasteLinkBtn" class="big">Paste link from clipboard</button>
           <div class="or">or type it</div>
           <div class="add-row">
@@ -70,6 +74,11 @@
           </div>
           <div id="joinStatus"></div>
         </div>
+        <dl class="facts">
+          <dt>Cost to voters</dt><dd>Free</dd>
+          <dt>Ballot linked to your wallet</dt><dd>Never</dd>
+          <dt>The count</dt><dd>Public</dd>
+        </dl>
         <div id="recent"></div>
       </section>
 

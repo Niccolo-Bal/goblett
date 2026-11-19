@@ -15,6 +15,7 @@ import { Group } from "@semaphore-protocol/group"
 import { generateProof } from "@semaphore-protocol/proof"
 
 import { publish, confirm } from "./nostr.js"
+import { wireIntro, openIntro, introSeen } from "./intro.js"
 import { ohttp } from "./ohttp.js"
 import { usernamesOf, addressesOf, claimUsername, USERNAME_RE, USERNAME_RULES } from "./accounts.js"
 // ABI + creation bytecode of both election types, exported by relayer/setup_chain.py.
@@ -136,7 +137,7 @@ async function init() {
     setStatus("homeMsg", `This site isn't set up for ${NETWORK ? `/${NETWORK}` : "this network"} yet (run relayer/setup_chain.py, then reload).`, "err")
     return
   }
-  $("brand").href = NETWORK ? `/${NETWORK}` : "/"
+  $("brand").href = $("homeLink").href = NETWORK ? `/${NETWORK}` : "/"
   if (NETWORK) {
     $("network").textContent = cfg.chainName ?? NETWORK
     $("network").hidden = false
@@ -1147,18 +1148,18 @@ function openElection(text) {
   location.search = `?election=${ethers.getAddress(m[0])}`
 }
 function wireHome() {
-  const how = $("howDialog")
-  $("howBtn").onclick = () => how.showModal()
-  $("howClose").onclick = $("howDone").onclick = () => how.close()
-  how.addEventListener("click", (e) => {
-    // A click on the backdrop targets the dialog itself but lands outside its box.
-    const r = how.getBoundingClientRect()
-    if (e.target === how && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) how.close()
-  })
-  $("joinTile").onclick = () => {
+  const showJoin = () => {
     $("joinBox").hidden = false
     $("joinBox").scrollIntoView({ behavior: "smooth", block: "center" })
   }
+  $("joinTile").onclick = showJoin
+  $("howBtn").onclick = $("guideBtn").onclick = () => openIntro()
+  wireIntro({
+    onJoin: () => (document.body.classList.contains("has-election") ? null : showJoin()),
+    onCreate: () => showCreate(true),
+  })
+  // First visit to the home page: play the intro once. Invite links go straight to the election.
+  if (!new URLSearchParams(location.search).has("election") && !introSeen()) openIntro()
   $("pasteLinkBtn").onclick = async () => {
     try {
       openElection(await navigator.clipboard.readText())
