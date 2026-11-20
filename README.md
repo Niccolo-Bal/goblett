@@ -89,17 +89,15 @@ which is a huge security risk.
 
 ## Front-End Implementation
 
-Goblett is hosted live at [goblett.xyz](https://goblett.xyz). Users can log in with either Metamask or email, the latter of which creates a 
-Circle user-controlled wallet. Then
+Goblett is hosted live at [goblett.xyz](https://goblett.xyz). Users can log in with either Metamask or email, the latter of which 
+creates a Circle user-controlled wallet which stays within the browser, sacrificing no security. Voters are then taken to a homepage
+where they can view any elections they are in and vote for them accordingly. There are also some fun animations.
+
+For deploying elections, we host our own faucet [0xCc516e2aBC427fa846DC37148966e76471f3428b](https://explorer.testnet.arc.io/address/0xCc516e2aBC427fa846DC37148966e76471f3428b) for testnet elections, and have an Arc onramp for mainnet elections to make the deployment
+process more convenient.
 
 The biggest thing that we will add after the initial UBC hackathon is Apple Pay + Debit card support for the Arc onramp. The only reason 
 it was not done now is that it requires approval which takes several days.
-
-Handles account creation with either email or Metamask wallet. Once signed in you can see the elections that you are whitelisted for. Then when you send your votes they are routed through an OHTTP relay which hides your IP. As soon as you cast your vote the tally will be visible on Arc.
-
-To start an election you create a title, who's on the ballot, a timeline, and whitelisted wallets. Then you provide funding through a USDC transfer and you're done. You'll be able to see the vote tally the whole time.
-
-Faucet [0xCc516e2aBC427fa846DC37148966e76471f3428b](https://explorer.testnet.arc.io/address/0xCc516e2aBC427fa846DC37148966e76471f3428b)
 
 ## Limitations + Mitigants
 
