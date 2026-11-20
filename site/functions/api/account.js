@@ -2,7 +2,7 @@
 //
 //   GET  /api/account?addresses=0x..,0x..      -> { accounts: [{ address, username }] }
 //   GET  /api/account?usernames=alice,bob      -> same
-//   POST /api/account { wallet, username, issuedAt, signature }  -> { address, username }
+//   POST /api/account { wallet, username, issuedAt, signature, chainId? }  -> { address, username }
 //
 // A username is public and so is its wallet address; reading needs no login. Writing
 // needs a fresh EIP-712 signature from the wallet itself (account-terms.js), checked here.
@@ -13,7 +13,7 @@
 // wallet and when creating an election, never when casting a vote.
 
 import { verifyTypedData } from "ethers"
-import { ACCOUNT_DOMAIN, ACCOUNT_TYPES, MAX_SIGNATURE_AGE_S, USERNAME_RE, USERNAME_RULES } from "../../account-terms.js"
+import { ACCOUNT_TYPES, MAX_SIGNATURE_AGE_S, USERNAME_RE, USERNAME_RULES, accountDomain } from "../../account-terms.js"
 import { ADDRESS_RE, db, json } from "../db.js"
 
 const MAX_LOOKUP = 100
@@ -52,6 +52,9 @@ async function claim(request, env) {
   const username = String(body?.username ?? "")
   const issuedAt = Number(body?.issuedAt)
   const signature = String(body?.signature ?? "")
+  // Present when the wallet signed under a domain that names a chain (account-terms.js).
+  const chainId = body?.chainId == null ? undefined : Number(body.chainId)
+  if (chainId !== undefined && !(Number.isSafeInteger(chainId) && chainId > 0)) return json(400, { error: "chainId must be a chain id" })
   if (!ADDRESS_RE.test(wallet)) return json(400, { error: "wallet must be an address" })
   if (!USERNAME_RE.test(username)) return json(400, { error: `a username is ${USERNAME_RULES}` })
   const now = Math.floor(Date.now() / 1000)
@@ -62,7 +65,7 @@ async function claim(request, env) {
   // The wallet itself must have signed exactly (wallet, username, issuedAt).
   let signer
   try {
-    signer = verifyTypedData(ACCOUNT_DOMAIN, ACCOUNT_TYPES, { wallet, username, issuedAt }, signature).toLowerCase()
+    signer = verifyTypedData(accountDomain(chainId), ACCOUNT_TYPES, { wallet, username, issuedAt }, signature).toLowerCase()
   } catch {
     return json(400, { error: "malformed signature" })
   }

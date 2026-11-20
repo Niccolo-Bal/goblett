@@ -12,7 +12,7 @@
 
 import { ethers } from "ethers"
 
-const SESSION = "goblett:circle" // the signed-in session
+const SESSION = "goblett:circle:session:" // + chain id: the signed-in session on that network
 const DEVICE = "goblett:circle:device" // Circle's id for this browser
 const REDIRECT = "goblett:circle:redirect" // a Google sign-in in progress (the page leaves and comes back)
 const CANCELLED = 4001 // "the user said no", as MetaMask reports it
@@ -71,11 +71,17 @@ function onLoginComplete(error, result) {
 /// Tests put a stand-in for the SDK's class here (the real one needs a browser).
 export const testing = { Sdk: null }
 
-// The SDK keeps one instance; constructing it again replaces its settings.
+// The SDK is one instance for the page. Settings for it must go through updateConfigs():
+// constructing it a second time returns the first instance and quietly drops the new
+// settings, and Circle's window then gets no tokens and closes itself.
+let sdk
 async function sdkWith(appId, loginConfigs) {
   const mod = testing.Sdk ? { W3SSdk: testing.Sdk } : await import("@circle-fin/w3s-pw-web-sdk")
   const W3SSdk = mod.W3SSdk ?? mod.default.W3SSdk
-  return new W3SSdk({ appSettings: { appId }, ...(loginConfigs ? { loginConfigs } : {}) }, onLoginComplete)
+  const configs = { appSettings: { appId }, ...(loginConfigs ? { loginConfigs } : {}) }
+  if (sdk) sdk.updateConfigs(configs, onLoginComplete)
+  else sdk = new W3SSdk(configs, onLoginComplete)
+  return sdk
 }
 
 async function deviceId(sdk) {
@@ -123,36 +129,49 @@ async function execute(session, challengeId) {
 // ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
-const save = (session) => localStorage.setItem(SESSION, JSON.stringify(session))
+// Testnet and mainnet are separate at Circle (separate keys, users and wallets), so the
+// same email is signed in to each on its own, and this browser keeps a session for each.
+// Switching network picks up that network's session without signing in again.
+const save = (session) => localStorage.setItem(SESSION + session.chainId, JSON.stringify(session))
+
+// Before the site had a network switch there was one session, under this key.
+const OLD_SESSION = "goblett:circle"
+const old = load(OLD_SESSION)
+if (old?.chainId && !localStorage.getItem(SESSION + old.chainId)) save(old)
+localStorage.removeItem(OLD_SESSION)
 
 /// The session saved in this browser for `chainId`, if someone is signed in this way.
 export function savedSession(chainId) {
-  const s = load(SESSION)
+  const s = load(SESSION + chainId)
   return s?.chainId === chainId && s.address && s.userToken ? s : null
 }
 
+/// Sign out of email sign-in here, on every network.
 export function forgetSession() {
-  localStorage.removeItem(SESSION)
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i)
+    if (key.startsWith(SESSION)) localStorage.removeItem(key)
+  }
 }
 
 // A call that needs the user's session token. Tokens last an hour; one that has run out
 // is renewed once, and if that fails too the session is over.
 async function call(session, body) {
   try {
-    return await api({ ...body, userToken: session.userToken })
+    return await api({ ...body, chainId: session.chainId, userToken: session.userToken })
   } catch (e) {
     if (e.status !== 401) throw e
     try {
-      const fresh = await api({ action: "refresh", userToken: session.userToken, refreshToken: session.refreshToken, deviceId: session.deviceId })
+      const fresh = await api({ action: "refresh", chainId: session.chainId, userToken: session.userToken, refreshToken: session.refreshToken, deviceId: session.deviceId })
       session.userToken = fresh.userToken
       if (fresh.encryptionKey) session.encryptionKey = fresh.encryptionKey
       if (fresh.refreshToken) session.refreshToken = fresh.refreshToken
       if (savedSession(session.chainId)) save(session)
     } catch {
-      forgetSession()
+      localStorage.removeItem(SESSION + session.chainId)
       throw Object.assign(new Error("You've been signed out. Sign in again to continue."), { code: "SIGNED_OUT" })
     }
-    return api({ ...body, userToken: session.userToken })
+    return api({ ...body, chainId: session.chainId, userToken: session.userToken })
   }
 }
 
@@ -163,12 +182,12 @@ async function openSession(session) {
     save(session)
     return session
   }
-  const first = await call(session, { action: "wallet", chainId: session.chainId })
+  const first = await call(session, { action: "wallet" })
   if (first.address) return use(first)
   await execute(session, first.challengeId)
   // The wallet appears a moment after the challenge completes.
   for (let i = 0; i < 20; i++) {
-    const w = await call(session, { action: "wallet", chainId: session.chainId, create: false })
+    const w = await call(session, { action: "wallet", create: false })
     if (w.address) return use(w)
     await sleep(1500)
   }
@@ -186,20 +205,23 @@ async function configFor(chainId) {
 export async function loginWithEmail(chainId, email) {
   const { appId } = await configFor(chainId)
   const device = await deviceId(await sdkWith(appId))
-  let tokens, sdk
+  let tokens
   const sendCode = async () => {
-    tokens = await api({ action: "emailToken", deviceId: device, email })
-    sdk = await sdkWith(appId, tokens)
+    tokens = await api({ action: "emailToken", chainId, deviceId: device, email })
+    if (!tokens.deviceToken || !tokens.deviceEncryptionKey || !tokens.otpToken) throw new Error("Circle didn't start the email sign-in. Try again.")
+    return sdkWith(appId, tokens)
   }
-  await sendCode()
+  const sdk = await sendCode()
   sdk.setOnResendOtpEmail(() => sendCode().catch(() => {}))
   let stop
   try {
     const result = await new Promise((resolve, reject) => {
-      // A wrong code is reported here too, but Circle's window stays open to try again.
-      login = { resolve, reject() {} }
+      // An error doesn't end it by itself: after a wrong code, Circle's window stays open
+      // to try again. If the window then goes away, that error is why.
+      let problem
+      login = { resolve, reject: (e) => (problem = e) }
       sdk.verifyOtp()
-      stop = onWindowClosed(sdk, reject)
+      stop = onWindowClosed(sdk, (cancelled) => reject(problem ? toError(problem) : cancelled))
     })
     stop()
     return await openSession({ chainId, appId, deviceId: device, login: tokens, label: email, userToken: result.userToken, encryptionKey: result.encryptionKey, refreshToken: result.refreshToken })
@@ -215,7 +237,7 @@ export async function loginWithGoogle(chainId) {
   const { appId, google } = await configFor(chainId)
   if (!google) throw new Error("Google sign-in isn't set up.")
   const device = await deviceId(await sdkWith(appId))
-  const tokens = await api({ action: "socialToken", deviceId: device })
+  const tokens = await api({ action: "socialToken", chainId, deviceId: device })
   const loginConfigs = { ...tokens, google: { clientId: google, redirectUri: `${location.origin}/app.html`, selectAccountPrompt: true } }
   localStorage.setItem(REDIRECT, JSON.stringify({ chainId, appId, deviceId: device, login: loginConfigs, search: location.search }))
   ;(await sdkWith(appId, loginConfigs)).performLogin("Google")
@@ -265,7 +287,14 @@ export function circleProvider(session, rpc, onSignedOut) {
 
   async function signTypedData(json) {
     const memo = MEMOS[JSON.parse(json).primaryType]
-    const { challengeId } = await authed({ action: "signTypedData", walletId: session.typedDataWalletId, data: json, ...(memo ? { memo } : {}) })
+    // Circle checks the data's domain against the wallet's blockchain: the Arc wallet signs
+    // data naming Arc's chain id (a registration), and refuses data that names no chain
+    // (a username), which the generic-EVM wallet takes. Both wallets are the same key.
+    const ask = (walletId) => authed({ action: "signTypedData", walletId, data: json, ...(memo ? { memo } : {}) })
+    const { challengeId } = await ask(session.typedDataWalletId).catch((e) => {
+      if (e.status !== 400 || session.transactionWalletId === session.typedDataWalletId) throw e
+      return ask(session.transactionWalletId)
+    })
     const signature = (await execute(session, challengeId))?.data?.signature
     if (!signature) throw new Error("Circle returned no signature")
     return signature

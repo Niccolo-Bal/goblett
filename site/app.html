@@ -12,7 +12,14 @@
   <body class="app" data-view="election">
     <header class="topbar">
       <div class="wrap">
-        <a class="brand" href="/"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett <span id="network" class="badge" hidden></span></a>
+        <div class="brand-row">
+          <a class="brand" href="/"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett</a>
+          <!-- Which network the page is on. The same page and sign-in serve both (main.js). -->
+          <span class="net-switch" role="group" aria-label="Network">
+            <a id="netMain" href="/app.html">Mainnet</a>
+            <a id="netTest" href="/app.html?network=testnet">Testnet</a>
+          </span>
+        </div>
         <nav class="nav" aria-label="Main">
           <a href="/app.html" data-nav="lobby">Elections</a>
           <a href="/app.html#new" data-nav="new">Start an election</a>
@@ -46,6 +53,7 @@
               <button id="googleBtn" type="button" class="btn-ghost btn-lg" hidden>Continue with Google</button>
               <p class="or">or, if you have a crypto wallet</p>
             </form>
+            <p id="emailElsewhere" class="hint" hidden>Email sign-in isn't set up on this network yet. <a id="emailElsewhereLink" href="#">Use it on the other network</a></p>
             <button id="connect" class="btn-blue btn-lg">Continue with MetaMask</button>
             <div id="signinStatus"></div>
             <p class="faint">Signing in looks up your username and your elections on Goblett's server.<br />Already registered and only here to vote? <a href="#">You don't need to sign in.</a></p>

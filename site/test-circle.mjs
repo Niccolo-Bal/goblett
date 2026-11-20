@@ -50,7 +50,12 @@ const circle = async (url, init = {}) => {
     user.pending = body
     return reply(201, { challengeId: "challenge-wallets" })
   }
-  if (path === "/user/sign/typedData") return reply(201, { challengeId: "challenge-typed" })
+  if (path === "/user/sign/typedData") {
+    // Like Circle: a chain-specific wallet only signs data whose domain names its chain.
+    const arc = user.wallets.find((w) => w.id === body.walletId)?.blockchain === "ARC-TESTNET"
+    if (arc && JSON.parse(body.data).domain?.chainId !== TESTNET) return reply(400, { code: 2, message: "The specified blockchain parameters are incorrect." })
+    return reply(201, { challengeId: "challenge-typed" })
+  }
   if (path === "/user/sign/transaction") return body.rawTransaction && user.refuseRaw ? reply(400, { code: 2, message: "rawTransaction not supported" }) : reply(201, { challengeId: "challenge-tx" })
   return reply(404, { message: "?" })
 }
@@ -68,7 +73,7 @@ const server = async (method, query = "", body, e = env) => {
   const r = await onRequest({ request: new Request(`http://site.test/api/circle${query}`, { method, body: body && JSON.stringify(body) }), env: e })
   return { status: r.status, ...(await r.json()) }
 }
-const post = (body, e) => server("POST", "", body, e)
+const post = (body, e) => server("POST", "", { chainId: TESTNET, ...body }, e)
 
 console.log("server function")
 let r = await server("GET", `?chainId=${TESTNET}`)
@@ -79,6 +84,18 @@ r = await server("GET", `?chainId=${MAINNET}`, undefined, { CIRCLE_API_KEY: "LIV
 check(r.available && r.appId === "app-live" && r.google === "g-1", "a live key offers it on mainnet, with Google when a client id is set")
 r = await server("GET", `?chainId=${TESTNET}`, undefined, {})
 check(r.status === 200 && r.available === false, "no key: not offered at all")
+
+// One site, both networks: a test key and a live key side by side.
+const both = { CIRCLE_API_KEY: "TEST_API_KEY:id:secret", CIRCLE_LIVE_API_KEY: "LIVE_API_KEY:id:secret", CIRCLE_LIVE_APP_ID: "app-live" }
+r = await server("GET", `?chainId=${MAINNET}`, undefined, both)
+const onTestnet = await server("GET", `?chainId=${TESTNET}`, undefined, both)
+check(r.available && r.appId === "app-live" && onTestnet.available && onTestnet.appId === "app-1", "with a key of each kind, both networks are offered, each with its own app id")
+await post({ action: "emailToken", chainId: MAINNET, deviceId: "device-1", email: "kofi@example.com" }, both)
+const live = calls.at(-1).headers.Authorization
+await post({ action: "emailToken", chainId: TESTNET, deviceId: "device-1", email: "kofi@example.com" }, both)
+check(live === "Bearer LIVE_API_KEY:id:secret" && calls.at(-1).headers.Authorization === "Bearer TEST_API_KEY:id:secret", "and each call goes out with the key for the network it names")
+r = await post({ action: "emailToken", chainId: undefined, deviceId: "device-1", email: "kofi@example.com" }, both)
+check(r.status === 400, "a call that names no network is refused")
 
 r = await post({ action: "emailToken", deviceId: "device-1", email: "kofi@example.com" })
 check(r.status === 200 && r.otpToken === "otp" && calls.at(-1).body.email === "kofi@example.com" && /^[0-9a-f-]{36}$/.test(calls.at(-1).body.idempotencyKey), "an email code is requested for the address given")
@@ -115,7 +132,7 @@ check(r.status === 401 && !user.pending, "an expired session is reported as such
 r = await post({ action: "refresh", userToken: "stale", refreshToken: "refresh-1", deviceId: "device-1" })
 check(r.status === 200 && r.userToken === "token-1+" && r.refreshToken === "refresh-1+", "and can be renewed")
 
-r = await post({ action: "signTypedData", userToken: user.token, walletId: arcWallet.id, data: "{}", memo: "Register to vote" })
+r = await post({ action: "signTypedData", userToken: user.token, walletId: arcWallet.id, data: JSON.stringify({ domain: { chainId: TESTNET } }), memo: "Register to vote" })
 check(r.challengeId === "challenge-typed" && calls.at(-1).body.walletId === arcWallet.id && calls.at(-1).body.memo === "Register to vote", "typed data to sign becomes a challenge for the user")
 r = await post({ action: "signTypedData", userToken: user.token, walletId: "../wallets", data: "{}" })
 check(r.status === 400, "a wallet id that isn't an id is refused")
@@ -135,7 +152,7 @@ console.log("wallet")
 const key = new ethers.Wallet("0x" + "11".repeat(32))
 user.wallets = [arcWallet, evmWallet].map((w) => ({ ...w, address: key.address }))
 const store = new Map()
-globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) }
+globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k), key: (i) => [...store.keys()][i] ?? null, get length() { return store.size } }
 globalThis.location = { hash: "", search: "", pathname: "/app.html", origin: "http://site.test" }
 let iframe = false
 globalThis.document = { getElementById: () => (iframe ? {} : null) }
@@ -144,7 +161,14 @@ globalThis.fetch = (url, init) => (String(url).startsWith("/api/circle") ? onReq
 // Circle's window: signs the last challenge the server was asked for, or does what the test says.
 let windowDoes = "sign"
 let tamper = false
+let sdkConfigs // the settings the one SDK instance has
 class W3SSdk {
+  constructor(configs) {
+    sdkConfigs = configs
+  }
+  updateConfigs(configs) {
+    sdkConfigs = configs
+  }
   setAuthentication(auth) {
     this.auth = auth
   }
@@ -169,7 +193,11 @@ class W3SSdk {
     }, 5)
   }
 }
+// A session saved before there was one per network is carried over to its network.
+localStorage.setItem("goblett:circle", JSON.stringify({ chainId: MAINNET, address: "0x" + "55".repeat(20), userToken: "old" }))
 const { circleProvider, savedSession, forgetSession, testing } = await import("./circle-wallet.js")
+check(savedSession(MAINNET)?.userToken === "old" && savedSession(TESTNET) === null && localStorage.getItem("goblett:circle") === null, "a session from before the network switch moves to its own network")
+forgetSession()
 testing.Sdk = W3SSdk
 
 const sent = []
@@ -182,7 +210,7 @@ const rpc = {
   send: async (method, params) => ({ method, params }),
 }
 const session = { chainId: TESTNET, appId: "app-1", deviceId: "device-1", login: {}, label: "kofi@example.com", userToken: user.token, encryptionKey: "ek", refreshToken: user.refreshToken, address: key.address, typedDataWalletId: arcWallet.id, transactionWalletId: evmWallet.id }
-localStorage.setItem("goblett:circle", JSON.stringify(session))
+localStorage.setItem("goblett:circle:session:" + TESTNET, JSON.stringify(session))
 let signedOut = 0
 const wallet = circleProvider(session, rpc, () => signedOut++)
 
@@ -196,6 +224,13 @@ const payload = JSON.stringify(ethers.TypedDataEncoder.getPayload(domain, types,
 let signature = await wallet.request({ method: "eth_signTypedData_v4", params: [key.address.toLowerCase(), payload] })
 check(ethers.verifyTypedData(domain, types, value, signature) === key.address && calls.findLast((c) => c.path === "/user/sign/typedData").body.memo === "Register to vote", "signs a registration the election contract would accept")
 
+// A username: typed data whose domain names no chain, which the Arc wallet won't sign.
+const accountDomain = { name: "goblett accounts", version: "1" }
+const accountTypes = { Account: [{ name: "wallet", type: "address" }, { name: "username", type: "string" }, { name: "issuedAt", type: "uint256" }] }
+const accountValue = { wallet: key.address.toLowerCase(), username: "kofi", issuedAt: 1700000000 }
+signature = await wallet.request({ method: "eth_signTypedData_v4", params: [key.address, JSON.stringify(ethers.TypedDataEncoder.getPayload(accountDomain, accountTypes, accountValue))] })
+check(ethers.verifyTypedData(accountDomain, accountTypes, accountValue, signature) === key.address && calls.findLast((c) => c.path === "/user/sign/typedData").body.walletId === evmWallet.id, "signs a username with the generic wallet when the Arc one refuses data that names no chain")
+
 windowDoes = "cancel"
 let err = await wallet.request({ method: "eth_signTypedData_v4", params: [key.address, payload] }).catch((e) => e)
 check(err.code === 4001, "cancelling in Circle's window is reported like a MetaMask rejection")
@@ -203,6 +238,12 @@ windowDoes = "close"
 err = await wallet.request({ method: "eth_signTypedData_v4", params: [key.address, payload] }).catch((e) => e)
 check(err.code === 4001, "and so is just closing the window")
 windowDoes = "sign"
+
+// The SDK is built once per page; later settings must still reach that one instance
+// (it ignores a second construction, which is how the code window once got no tokens).
+session.login = { deviceToken: "dt-2", deviceEncryptionKey: "dek-2", otpToken: "otp-2" }
+await wallet.request({ method: "eth_signTypedData_v4", params: [key.address, payload] })
+check(sdkConfigs.loginConfigs?.otpToken === "otp-2" && sdkConfigs.appSettings.appId === "app-1", "settings changed after the SDK was first built still reach it")
 
 // Deploying an election: a contract creation carrying the relayer funding.
 const deploy = { from: key.address, data: "0x6001600155", value: ethers.toQuantity(ethers.parseEther("2.5")), gas: "0x2dc6c0" }
@@ -234,6 +275,11 @@ session.refreshToken = "spent"
 err = await wallet.request({ method: "eth_signTypedData_v4", params: [key.address, payload] }).catch((e) => e)
 check(err.code === "SIGNED_OUT" && signedOut === 1 && savedSession(TESTNET) === null, "when it can't be renewed, the user is signed out here")
 
+// A session per network: switching network finds that network's session, and signing out ends both.
+localStorage.setItem("goblett:circle:session:" + TESTNET, JSON.stringify(session))
+localStorage.setItem("goblett:circle:session:" + MAINNET, JSON.stringify({ ...session, chainId: MAINNET, address: "0x" + "44".repeat(20) }))
+check(savedSession(TESTNET).address === key.address && savedSession(MAINNET).address === "0x" + "44".repeat(20), "each network keeps its own session")
 forgetSession()
+check(savedSession(TESTNET) === null && savedSession(MAINNET) === null && localStorage.getItem("goblett:circle:device") === null, "signing out forgets them all")
 console.log(failures ? `${failures} FAILURE(S)` : "ALL PASSED")
 process.exit(failures ? 1 : 0)

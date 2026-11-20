@@ -2,7 +2,7 @@
 // /api/account. Used for display and for whitelisting voters by name. It has nothing to do
 // with voting, and nothing here is called while a vote is being cast.
 
-import { ACCOUNT_DOMAIN, ACCOUNT_TYPES, USERNAME_RE, USERNAME_RULES } from "./account-terms.js"
+import { ACCOUNT_TYPES, USERNAME_RE, USERNAME_RULES, accountDomain } from "./account-terms.js"
 
 export { USERNAME_RE, USERNAME_RULES }
 
@@ -32,18 +32,21 @@ export async function addressesOf(usernames) {
 export async function claimUsername(eth, wallet, username) {
   if (!USERNAME_RE.test(username)) throw new Error(`a username is ${USERNAME_RULES}`)
   const message = { wallet: wallet.toLowerCase(), username, issuedAt: Math.floor(Date.now() / 1000) }
+  // A Circle wallet (email sign-in) only signs data that names its chain; see account-terms.js.
+  const chainId = eth.isCircle ? Number(await eth.request({ method: "eth_chainId" })) : undefined
   const typed = {
     types: {
       EIP712Domain: [
         { name: "name", type: "string" },
         { name: "version", type: "string" },
+        ...(chainId == null ? [] : [{ name: "chainId", type: "uint256" }]),
       ],
       ...ACCOUNT_TYPES,
     },
-    domain: ACCOUNT_DOMAIN,
+    domain: accountDomain(chainId),
     primaryType: "Account",
     message,
   }
   const signature = await eth.request({ method: "eth_signTypedData_v4", params: [wallet.toLowerCase(), JSON.stringify(typed)] })
-  return api("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...message, signature }) })
+  return api("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...message, chainId, signature }) })
 }

@@ -91,6 +91,12 @@ button:disabled { opacity: 0.38; cursor: not-allowed; transform: none; }
 .topbar .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding-top: 18px; padding-bottom: 18px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font: var(--title); letter-spacing: -0.01em; }
 .brand:hover { color: var(--text); }
+.brand-row { display: flex; align-items: center; gap: 14px; }
+/* Mainnet / Testnet: two links, the current one filled in. */
+.net-switch { display: inline-flex; padding: 2px; border: 1px solid var(--line-2); border-radius: 999px; font: 500 12px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.net-switch a { padding: 7px 10px; border-radius: 999px; color: var(--faint); text-decoration: none; }
+.net-switch a:hover { color: var(--text); }
+.net-switch a[aria-current="true"] { color: var(--blue-soft); background: var(--blue-wash); }
 .brand .mark { height: 28px; width: auto; flex: none; }
 .brand .badge { font: 500 13px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue-soft); border: 1px solid var(--blue-line); border-radius: 4px; padding: 4px 6px; }
 .nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 28px; font-size: 15px; }

@@ -1,8 +1,8 @@
 // Server function: /api/circle. Sign-in without a wallet extension, through Circle's
 // user-controlled wallets (email code or Google). The browser side is circle-wallet.js.
 //
-//   GET  /api/circle?chainId=5042002   -> { available, appId, google }
-//   POST /api/circle { action, ... }   -> see ACTIONS below
+//   GET  /api/circle?chainId=5042002            -> { available, appId, google }
+//   POST /api/circle { action, chainId, ... }   -> see ACTIONS below
 //
 // Circle's API needs two credentials: our API key, which lives only in this function's
 // environment (CIRCLE_API_KEY), and the user's own session token, which Circle gives the
@@ -33,12 +33,11 @@ class CircleError extends Error {
   }
 }
 
-async function circle(env, path, { method = "GET", userToken, body } = {}) {
-  if (!env.CIRCLE_API_KEY) throw new Error("server is missing CIRCLE_API_KEY")
+async function circle(key, path, { method = "GET", userToken, body } = {}) {
   const init = {
     method,
     headers: {
-      Authorization: `Bearer ${env.CIRCLE_API_KEY}`,
+      Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
       ...(userToken ? { "X-User-Token": userToken } : {}),
     },
@@ -59,21 +58,42 @@ async function circle(env, path, { method = "GET", userToken, body } = {}) {
   return out.data ?? {}
 }
 
-// Which Circle "blockchains" a user's wallets are created on for an election chain, or
-// null when this API key can't serve that chain (a test key only works on testnets, a
-// live key only on mainnets). The chain's own entry, where Circle knows the chain, plus
-// the generic EVM one: Circle only signs raw transactions (which deploying an election
-// needs) with a generic-EVM wallet. A user's wallets share one address on every EVM chain.
-function blockchainsFor(env, chainId) {
-  const testKey = String(env.CIRCLE_API_KEY ?? "").startsWith("TEST_API_KEY")
-  if (!Number.isSafeInteger(chainId) || chainId <= 0 || MAINNETS.has(chainId) === testKey) return null
-  return [ARC[chainId], testKey ? "EVM-TESTNET" : "EVM"].filter(Boolean)
+// Circle keeps testnets and mainnets apart: a test key (TEST_API_KEY:...) only works on
+// testnets and a live key only on mainnets, each with its own app id, users and wallets.
+// The site serves both networks, so it can hold one key of each kind. Any of these
+// variables may carry either; the key's own prefix says which kind it is.
+const KEY_VARS = [
+  ["CIRCLE_API_KEY", "CIRCLE_APP_ID"],
+  ["CIRCLE_TEST_API_KEY", "CIRCLE_TEST_APP_ID"],
+  ["CIRCLE_LIVE_API_KEY", "CIRCLE_LIVE_APP_ID"],
+]
+const isTestKey = (key) => key.startsWith("TEST_API_KEY")
+
+/// What serves `chainId`: { key, appIdVar, chains }, or null if no key here covers it.
+/// `chains` are the Circle "blockchains" the user's wallets are created on.
+function circleFor(env, chainId) {
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) return null
+  const testnet = !MAINNETS.has(chainId)
+  for (const [keyVar, appIdVar] of KEY_VARS) {
+    const key = String(env[keyVar] ?? "")
+    if (key && isTestKey(key) === testnet) return { key, appId: env[appIdVar], chains: blockchainsFor(testnet, chainId) }
+  }
+  return null
 }
 
-// The App ID is public (the browser SDK needs it) and fixed per Circle account.
-let appIdCache
-async function appId(env) {
-  return env.CIRCLE_APP_ID || (appIdCache ??= (await circle(env, "/config/entity")).appId)
+// A user's wallets for an election chain: the chain's own entry, where Circle knows the chain, plus
+// the generic EVM one: Circle only signs raw transactions (which deploying an election
+// needs) with a generic-EVM wallet. A user's wallets share one address on every EVM chain.
+function blockchainsFor(testnet, chainId) {
+  return [ARC[chainId], testnet ? "EVM-TESTNET" : "EVM"].filter(Boolean)
+}
+
+// The App ID is public (the browser SDK needs it) and fixed per key.
+const appIds = new Map()
+async function appId(c) {
+  if (c.appId) return c.appId
+  if (!appIds.has(c.key)) appIds.set(c.key, (await circle(c.key, "/config/entity")).appId)
+  return appIds.get(c.key)
 }
 
 const str = (v, max = 4096) => (typeof v === "string" && v.length > 0 && v.length <= max ? v : null)
@@ -81,26 +101,26 @@ const str = (v, max = 4096) => (typeof v === "string" && v.length > 0 && v.lengt
 const ACTIONS = {
   // Step 1 of email sign-in: Circle emails a one-time code to `email`.
   // -> { deviceToken, deviceEncryptionKey, otpToken } for the browser SDK's code prompt.
-  async emailToken(env, b) {
+  async emailToken(c, b) {
     const deviceId = str(b.deviceId, 200)
     const email = str(b.email, 320)?.trim()
     if (!deviceId) return json(400, { error: "deviceId is missing" })
     if (!email || !EMAIL_RE.test(email)) return json(400, { error: "that doesn't look like an email address" })
-    return json(200, await circle(env, "/users/email/token", { method: "POST", body: { deviceId, email } }))
+    return json(200, await circle(c.key, "/users/email/token", { method: "POST", body: { deviceId, email } }))
   },
 
   // Step 1 of Google sign-in. -> { deviceToken, deviceEncryptionKey }
-  async socialToken(env, b) {
+  async socialToken(c, b) {
     const deviceId = str(b.deviceId, 200)
     if (!deviceId) return json(400, { error: "deviceId is missing" })
-    return json(200, await circle(env, "/users/social/token", { method: "POST", body: { deviceId } }))
+    return json(200, await circle(c.key, "/users/social/token", { method: "POST", body: { deviceId } }))
   },
 
   // A session token lasts an hour. -> { userToken, encryptionKey, refreshToken }
-  async refresh(env, b) {
+  async refresh(c, b) {
     const [userToken, refreshToken, deviceId] = [str(b.userToken), str(b.refreshToken), str(b.deviceId, 200)]
     if (!userToken || !refreshToken || !deviceId) return json(400, { error: "userToken, refreshToken and deviceId are required" })
-    return json(200, await circle(env, "/users/token/refresh", { method: "POST", userToken, body: { refreshToken, deviceId } }))
+    return json(200, await circle(c.key, "/users/token/refresh", { method: "POST", userToken, body: { refreshToken, deviceId } }))
   },
 
   // The signed-in user's wallet for an election chain.
@@ -108,15 +128,14 @@ const ACTIONS = {
   //    { challengeId } for the browser SDK to run, which creates it; or {} when called
   //    with create: false, which is how the browser waits for a wallet being created
   //    (asking to create it twice would make two).
-  async wallet(env, b) {
+  async wallet(c, b) {
     const userToken = str(b.userToken)
-    const chains = blockchainsFor(env, Number(b.chainId))
+    const chains = c.chains
     if (!userToken) return json(400, { error: "userToken is missing" })
-    if (!chains) return json(400, { error: "email sign-in isn't available on this network" })
 
     let wallets = []
     try {
-      wallets = (await circle(env, "/wallets?pageSize=50", { userToken })).wallets ?? []
+      wallets = (await circle(c.key, "/wallets?pageSize=50", { userToken })).wallets ?? []
     } catch (e) {
       // A user who has never been set up has no wallet list yet. A bad token is another matter.
       if (e.status === 401 || e.status === 403 || e.code === TOKEN_EXPIRED) throw e
@@ -131,38 +150,39 @@ const ACTIONS = {
     if (b.create === false) return json(200, {})
     const want = { accountType: "EOA", blockchains: chains }
     try {
-      return json(200, await circle(env, "/user/initialize", { method: "POST", userToken, body: want }))
+      return json(200, await circle(c.key, "/user/initialize", { method: "POST", userToken, body: want }))
     } catch (e) {
       if (e.code !== ALREADY_INITIALIZED) throw e
       // Set up before (on another network): add this network's wallets.
       const missing = chains.filter((c) => !mine(c))
-      return json(200, await circle(env, "/user/wallets", { method: "POST", userToken, body: { ...want, blockchains: missing } }))
+      return json(200, await circle(c.key, "/user/wallets", { method: "POST", userToken, body: { ...want, blockchains: missing } }))
     }
   },
 
   // Ask the user to sign EIP-712 typed data (registration, username). -> { challengeId }
-  async signTypedData(env, b) {
+  async signTypedData(c, b) {
     const [userToken, walletId, data] = [str(b.userToken), str(b.walletId, 64), str(b.data, 20000)]
     if (!userToken || !walletId || !UUID_RE.test(walletId) || !data) return json(400, { error: "userToken, walletId and data are required" })
     const body = { walletId, data, ...(str(b.memo, 200) ? { memo: b.memo } : {}) }
-    return json(200, await circle(env, "/user/sign/typedData", { method: "POST", userToken, body }))
+    return json(200, await circle(c.key, "/user/sign/typedData", { method: "POST", userToken, body }))
   },
 
   // Ask the user to sign a transaction (deploying an election). The browser broadcasts it
   // itself. -> { challengeId }
-  async signTransaction(env, b) {
+  async signTransaction(c, b) {
     const [userToken, walletId] = [str(b.userToken), str(b.walletId, 64)]
     const tx = str(b.rawTransaction, 200000) ? { rawTransaction: b.rawTransaction } : str(b.transaction, 200000) ? { transaction: b.transaction } : null
     if (!userToken || !walletId || !UUID_RE.test(walletId) || !tx) return json(400, { error: "userToken, walletId and a transaction are required" })
     const body = { walletId, ...tx, ...(str(b.memo, 200) ? { memo: b.memo } : {}) }
-    return json(200, await circle(env, "/user/sign/transaction", { method: "POST", userToken, body }))
+    return json(200, await circle(c.key, "/user/sign/transaction", { method: "POST", userToken, body }))
   },
 }
 
 async function config(request, env) {
   const chainId = Number(new URL(request.url).searchParams.get("chainId"))
-  if (!env.CIRCLE_API_KEY || !blockchainsFor(env, chainId)) return json(200, { available: false })
-  return json(200, { available: true, appId: await appId(env), google: env.GOOGLE_CLIENT_ID || null })
+  const c = circleFor(env, chainId)
+  if (!c) return json(200, { available: false })
+  return json(200, { available: true, appId: await appId(c), google: env.GOOGLE_CLIENT_ID || null })
 }
 
 export async function onRequest({ request, env }) {
@@ -177,7 +197,10 @@ export async function onRequest({ request, env }) {
     }
     const action = Object.hasOwn(ACTIONS, body?.action) ? ACTIONS[body.action] : null
     if (!action) return json(400, { error: "unknown action" })
-    return await action(env, body)
+    // Every call names its network, which decides the key (test or live) it is made with.
+    const c = circleFor(env, Number(body.chainId))
+    if (!c) return json(400, { error: "email sign-in isn't available on this network" })
+    return await action(c, body)
   } catch (e) {
     if (e instanceof CircleError) {
       // 401 tells the browser its session is over (it then refreshes, or asks to sign in again).

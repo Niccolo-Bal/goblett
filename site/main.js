@@ -136,10 +136,10 @@ async function init() {
     chainReady(false)
     return
   }
-  if (NETWORK) {
-    $("network").textContent = cfg.chainName ?? NETWORK
-    $("network").hidden = false
-  }
+  // The header's network switch: mark where we are, and name the chains.
+  const here = $(NETWORK ? "netTest" : "netMain")
+  here.setAttribute("aria-current", "true")
+  here.title = `You're on ${cfg.chainName ?? "chain " + cfg.chainId}`
   const net = ethers.Network.from(cfg.chainId)
   provider = new ethers.JsonRpcProvider(cfg.rpcUrl, net, { staticNetwork: net, cacheTimeout: -1 })
   chainReady(true)
@@ -490,6 +490,17 @@ async function showSigninOptions() {
   $("googleBtn").hidden = !google
   $("connect").classList.toggle("btn-blue", !available)
   $("connect").classList.toggle("btn-ghost", !!available)
+  // Testnet and mainnet each need their own Circle key on the server. If only the other
+  // network has one, say so and point there, rather than showing MetaMask alone.
+  $("emailElsewhere").hidden = true
+  if (available) return
+  try {
+    const other = await (await fetch(`/election${NETWORK ? "" : ".testnet"}.json`, { cache: "no-store" })).json()
+    if (!(await circleConfig(other.chainId)).available) return
+    $("emailElsewhereLink").textContent = `Use it on ${other.chainName ?? "the other network"}`
+    $("emailElsewhereLink").href = `/app.html${NETWORK ? "" : "?network=testnet"}#signin`
+    $("emailElsewhere").hidden = false
+  } catch {}
 }
 
 // The "Pick a username" form on the sign-in card.
