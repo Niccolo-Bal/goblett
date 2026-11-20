@@ -1,0 +1,8 @@
+# Security headers for the static site (Cloudflare Workers assets). No CSP script-src yet:
+# the Circle sign-in SDK and the onramp widget load their own frames and scripts, so a
+# strict policy needs testing against both first.
+/*
+  Strict-Transport-Security: max-age=31536000
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'
+  X-Content-Type-Options: nosniff
