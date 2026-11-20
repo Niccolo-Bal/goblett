@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+  The sign-in code email. Circle sends it (through the SMTP server set in its console),
+  so this file is not used by the site's code: paste it into the Circle console at
+  Wallets -> User Controlled -> Configurator -> Authentication Methods -> Email, as the
+  message body. Suggested subject: "Your Goblett sign-in code".
+
+  {{code}} is where Circle puts the code. It must stay in the body.
+  The logo is embedded in the file itself (the long src="data:..." line), so nothing has to
+  be hosted. Some mail apps, Gmail among them, don't show embedded images; they show the
+  image's alt text instead, which is styled here to read as a "Goblett" wordmark.
+
+  Written for the worst case: tables for layout, and every piece of text styled three
+  ways at once (on its cell, on a span, and with an old-style font tag, plus bgcolor
+  attributes for backgrounds), with no quotes inside any style. Whatever one mail app or
+  template editor strips, another of the three survives.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your Goblett sign-in code</title>
+  </head>
+  <body bgcolor="#eef2f8" style="margin: 0; padding: 0; background-color: #eef2f8">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef2f8" style="background-color: #eef2f8">
+      <tr>
+        <td align="center" style="padding: 40px 16px">
+          <table role="presentation" width="520" cellpadding="20" cellspacing="0" border="0" bgcolor="#ffffff" style="width: 100%; max-width: 520px; background-color: #ffffff; border-radius: 16px; overflow: hidden">
+            <tr>
+              <td height="6" bgcolor="#0a7cff" style="height: 6px; background-color: #0a7cff; font-size: 0; line-height: 0; padding: 0">&nbsp;</td>
+            </tr>
+            <tr>
+              <td align="left" style="padding: 34px 40px 0">
+                <font face="Arial, Helvetica, sans-serif" size="6" color="#05265f"><img src="data:image/png;base64,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" width="150" height="71" alt="Goblett" style="display: block; width: 150px; height: 71px; border: 0; font-family: Arial, Helvetica, sans-serif; font-size: 30px; line-height: 71px; font-weight: bold; color: #05265f" /></font>
+              </td>
+            </tr>
+            <tr>
+              <td align="left" style="padding: 26px 40px 0; font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.4; font-weight: bold; color: #0a7cff; letter-spacing: 2px">
+                <font face="Arial, Helvetica, sans-serif" size="1" color="#0a7cff"><span style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.4; font-weight: bold; color: #0a7cff; letter-spacing: 2px"><b>SIGN-IN CODE</b></span></font>
+              </td>
+            </tr>
+            <tr>
+              <td align="left" style="padding: 8px 40px 0; font-family: Arial, Helvetica, sans-serif; font-size: 28px; line-height: 1.25; font-weight: bold; color: #05265f">
+                <font face="Arial, Helvetica, sans-serif" size="6" color="#05265f"><span style="font-family: Arial, Helvetica, sans-serif; font-size: 28px; line-height: 1.25; font-weight: bold; color: #05265f"><b>Finish signing in to Goblett</b></span></font>
+              </td>
+            </tr>
+            <tr>
+              <td align="left" style="padding: 14px 40px 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.6; font-weight: normal; color: #4a5872">
+                <font face="Arial, Helvetica, sans-serif" size="3" color="#4a5872"><span style="font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.6; font-weight: normal; color: #4a5872">Go back to the Goblett window and type in the six digits below.</span></font>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 26px 40px 0">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#05265f" style="background-color: #05265f; border-radius: 12px">
+                  <tr>
+                    <td align="center" bgcolor="#05265f" height="80" style="padding: 24px 16px; background-color: #05265f; border-radius: 12px; font-family: Courier New, Courier, monospace; font-size: 36px; line-height: 1.2; font-weight: bold; letter-spacing: 6px; color: #ffffff; white-space: nowrap">
+                      <font face="Courier New, Courier, monospace" size="7" color="#ffffff"><b><span style="font-family: Courier New, Courier, monospace; font-size: 36px; line-height: 1.2; font-weight: bold; letter-spacing: 6px; color: #ffffff; white-space: nowrap">{{code}}</span></b></font>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td align="left" style="padding: 16px 40px 0; font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.6; font-weight: normal; color: #6b778c">
+                <font face="Arial, Helvetica, sans-serif" size="2" color="#6b778c"><span style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.6; font-weight: normal; color: #6b778c">The code works once and expires soon. If it has expired, ask for a new one from the sign-in window.</span></font>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 30px 40px 0">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td height="1" bgcolor="#e6ebf3" style="height: 1px; background-color: #e6ebf3; font-size: 0; line-height: 0">&nbsp;</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td align="left" style="padding: 20px 40px 36px; font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height: 1.6; font-weight: normal; color: #6b778c">
+                <font face="Arial, Helvetica, sans-serif" size="2" color="#6b778c"><span style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height: 1.6; font-weight: normal; color: #6b778c"><b><font color="#05265f"><span style="color: #05265f">Didn't ask for this?</span></font></b> You can ignore this email. Nobody can sign in without the code, and Goblett will never ask you for it.</span></font>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width: 100%; max-width: 520px">
+            <tr>
+              <td align="center" style="padding: 20px 40px 0; font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.6; font-weight: normal; color: #8a94a6">
+                <font face="Arial, Helvetica, sans-serif" size="1" color="#8a94a6"><span style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.6; font-weight: normal; color: #8a94a6">Goblett &middot; Trustless, anonymous voting on-chain<br /><a href="https://goblett.xyz" style="color: #2f6fe0; text-decoration: none"><font color="#2f6fe0">goblett.xyz</font></a></span></font>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

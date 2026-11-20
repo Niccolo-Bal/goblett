@@ -86,6 +86,22 @@ check(r.status === 200 && r.username === "robert", "and can change it with a new
 r = await call("POST", "", first)
 check(r.status === 409 && rows.get(bob.address.toLowerCase()).username === "robert", "replaying the older signature does not change it back")
 
+// A wallet that only signs data naming a chain (Circle's) states the chain it named.
+const carol = Wallet.createRandom()
+const onChain = async (chainId, sentChainId = chainId) => {
+  const issuedAt = now()
+  const signature = await carol.signTypedData({ ...ACCOUNT_DOMAIN, chainId }, ACCOUNT_TYPES, { wallet: carol.address.toLowerCase(), username: "carol", issuedAt })
+  return call("POST", "", { wallet: carol.address, username: "carol", issuedAt, signature, chainId: sentChainId })
+}
+r = await onChain(5042002, null)
+check(r.status === 403, "a signature made under a chain-naming domain is refused if the request doesn't say so")
+r = await onChain(5042002, 1)
+check(r.status === 403, "or names a different chain")
+r = await onChain(5042002, "x")
+check(r.status === 400, "a malformed chainId is refused")
+r = await onChain(5042002)
+check(r.status === 200 && r.username === "carol", "and accepted when the request names the chain that was signed")
+
 r = await call("GET", `?usernames=alice,robert,nobody`)
 check(r.status === 200 && r.accounts.length === 2, "lookup by usernames returns the ones that exist")
 r = await call("GET", `?addresses=${alice.address},${bob.address}`)
