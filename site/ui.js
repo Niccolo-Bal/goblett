@@ -154,3 +154,32 @@ $("pasteLink").onclick = async () => {
   }
 }
 if (location.hash === "#join") $("joinOpen").click()
+
+// ---------------------------------------------------------------------------
+// Share: an invite link to the open election (the share sheet on phones, else the clipboard)
+// ---------------------------------------------------------------------------
+function inviteLink() {
+  const here = new URLSearchParams(location.search)
+  const q = new URLSearchParams({ election: here.get("election") ?? "" })
+  const testnet = here.get("network") === "testnet" || location.pathname.split("/")[1] === "testnet"
+  if (testnet) q.set("network", "testnet")
+  return `${location.origin}/app.html?${q}`
+}
+$("shareBtn").onclick = async () => {
+  const btn = $("shareBtn")
+  const url = inviteLink()
+  const title = $("title").textContent.trim()
+  const coarse = matchMedia("(pointer: coarse)").matches // phones and tablets
+  try {
+    if (coarse && navigator.share) {
+      await navigator.share({ title: `Vote: ${title}`, text: `You're invited to vote in "${title}" on Goblett.`, url })
+      return
+    }
+    await navigator.clipboard.writeText(url)
+    btn.textContent = "Link copied ✓"
+  } catch (e) {
+    if (e?.name === "AbortError") return // closed the share sheet
+    prompt("Copy this invite link:", url)
+  }
+  setTimeout(() => (btn.textContent = "Copy invite link"), 2000)
+}

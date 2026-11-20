@@ -448,3 +448,7 @@ body.home { min-height: 100svh; display: flex; flex-direction: column; }
 .join-box h2 { margin: 0; }
 .join-box .lead { margin: 0; }
 .join-box > .btn-blue { align-self: flex-start; }
+
+/* Election header: the phase pill with the invite-link button under it */
+.el-head-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+@media (max-width: 720px) { .el-head-side { flex-direction: row; align-items: center; flex-wrap: wrap; } }
