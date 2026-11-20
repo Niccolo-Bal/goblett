@@ -380,3 +380,6 @@ body.home { min-height: 100svh; display: flex; flex-direction: column; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; }
 @media (max-width: 480px) { .calling-actions > .btn { flex: 1 1 auto; } }
+
+/* A new visit: the intro covers the page from the first paint (index.html adds .intro-first) */
+.intro-first body > :not(#intro) { visibility: hidden; }

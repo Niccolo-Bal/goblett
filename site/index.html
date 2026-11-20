@@ -15,7 +15,12 @@
         if (q.has("election") || testnet) {
           if (testnet) q.set("network", "testnet")
           location.replace("/app.html?" + q)
+          return
         }
+        // A new visit opens on the intro: hide the page underneath until it's done, so it doesn't flash.
+        try {
+          if (sessionStorage.getItem("goblett.introSeen") !== "1") document.documentElement.classList.add("intro-first")
+        } catch {}
       })()
     </script>
     <link rel="stylesheet" href="/style.css" />
@@ -88,7 +93,7 @@
       import { wireIntro, openIntro, introSeen } from "/intro.js"
       wireIntro({ onJoin: () => (location.href = "/app.html"), onCreate: () => (location.href = "/app.html#new") })
       for (const id of ["howBtn", "howNav", "tokenBtn"]) document.getElementById(id).onclick = () => openIntro()
-      if (!introSeen()) openIntro() // first visit
+      if (!introSeen()) openIntro() // every new visit starts here, then lands on this page
     </script>
   </body>
 </html>

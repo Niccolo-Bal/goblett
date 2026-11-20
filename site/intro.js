@@ -3,6 +3,8 @@
 // Pure UI: it reads and sends nothing.
 
 const $ = (id) => document.getElementById(id)
+// Seen in this visit (this tab). A new visit plays the intro again; coming back to
+// the landing page within the same visit doesn't.
 const SEEN = "goblett.introSeen"
 const COMMAND = "goblett vote --private"
 const OUTPUT = [
@@ -48,7 +50,7 @@ function showStep(i) {
   $("guideDots").innerHTML = STEPS.map((_, j) => `<li class="${j === i ? "on" : ""}"></li>`).join("")
   const last = i === STEPS.length - 1
   $("guideActions").innerHTML = last
-    ? `<button class="btn-blue" data-go="join">Join an election</button><button class="btn-ghost" data-go="create">Start one</button><button class="link" data-go="close">Look around</button>`
+    ? `<button class="btn-blue btn-lg" data-go="close">Continue</button>`
     : `<button class="link" data-go="next">Tap anywhere to continue</button>`
 }
 
@@ -89,7 +91,8 @@ async function runCommand() {
 
 function advance() {
   if (phase === "ready") return runCommand()
-  if (phase !== "guide" || step >= STEPS.length - 1) return
+  if (phase !== "guide") return
+  if (step >= STEPS.length - 1) return closeIntro() // the last line: on to the main page
   showStep(step + 1)
 }
 
@@ -110,14 +113,15 @@ export function closeIntro(go) {
   run++
   phase = "closed"
   try {
-    localStorage.setItem(SEEN, "1")
+    sessionStorage.setItem(SEEN, "1")
   } catch {}
   $("intro").hidden = true
   document.body.classList.remove("intro-open")
+  document.documentElement.classList.remove("intro-first")
   actions[go]?.()
 }
 
-// onJoin / onCreate: what the last step's buttons do.
+// onJoin / onCreate: optional actions for buttons with data-go="join" / "create".
 export function wireIntro({ onJoin, onCreate }) {
   actions = { join: onJoin, create: onCreate }
   $("termRun").onclick = (e) => (e.stopPropagation(), runCommand())
@@ -140,7 +144,7 @@ export function wireIntro({ onJoin, onCreate }) {
 
 export function introSeen() {
   try {
-    return localStorage.getItem(SEEN) === "1"
+    return sessionStorage.getItem(SEEN) === "1"
   } catch {
     return true
   }
