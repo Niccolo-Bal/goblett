@@ -174,11 +174,27 @@ async function init() {
 }
 
 // Show chain errors (node down, no contract at the address) instead of failing silently.
+// Public RPCs (Arc testnet's) rate-limit by IP, and several open tabs refreshing every
+// REFRESH_MS add up. On a rate limit, keep the page as it is, say so, and pause refreshing
+// for a while instead of replacing the title with the error and asking again at once.
+let busyUntil = 0
+const RATE_LIMITED = /rate.?limit|too many requests|\b429\b/i
 async function refresh() {
-  if (!election) return
+  if (!election || Date.now() < busyUntil) return
   try {
     await _refresh()
+    if (busyUntil) {
+      busyUntil = 0
+      $("elMeta").classList.remove("busy")
+    }
   } catch (e) {
+    if (RATE_LIMITED.test(errMsg(e))) {
+      busyUntil = Date.now() + 30000
+      $("elMeta").classList.add("busy")
+      $("elMeta").textContent = "The network is busy. Retrying in a few seconds…"
+      log(`rate-limited by the RPC; pausing refreshes for 30 s (${errMsg(e)})`)
+      return
+    }
     const code = provider && (await provider.getCode(cfg.election).catch(() => null))
     $("title").textContent =
       code === null ? `Chain RPC not reachable at ${cfg.rpcUrl}` : code === "0x" ? `No election contract at ${cfg.election}. Redeploy, then reload.` : `Error: ${errMsg(e)}`
