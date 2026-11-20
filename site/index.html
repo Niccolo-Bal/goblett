@@ -56,6 +56,7 @@
         <a class="brand" href="/"><img class="mark" src="/goblett_mark.svg" alt="" width="18" height="32" />Goblett</a>
         <nav class="nav home-nav" aria-label="Main">
           <button id="howNav" class="link">How it works</button>
+          <a href="/why.html">Why Goblett</a>
           <a class="gh-link" href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
           <a class="btn btn-ghost btn-sm" href="/app.html#signin">Sign in</a>
         </nav>
@@ -82,6 +83,7 @@
       <div class="wrap">
         <span class="brand"><img class="mark" src="/goblett_mark.svg" alt="" width="18" height="32" />Goblett</span>
         <nav aria-label="Footer">
+          <a href="/why.html">Why Goblett</a>
           <a href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
           <a href="/app.html">Elections</a>
           <a href="https://github.com/Niccolo-Bal/goblett/tree/main/relayer" rel="noopener">Run a relayer</a>
@@ -93,7 +95,7 @@
       import { wireIntro, openIntro, introSeen } from "/intro.js"
       wireIntro({ onJoin: () => (location.href = "/app.html"), onCreate: () => (location.href = "/app.html#new") })
       for (const id of ["howBtn", "howNav", "tokenBtn"]) document.getElementById(id).onclick = () => openIntro()
-      if (!introSeen()) openIntro() // every new visit starts here, then lands on this page
+      if (!introSeen() || location.hash === "#how") openIntro() // every new visit starts here, then lands on this page
     </script>
   </body>
 </html>
