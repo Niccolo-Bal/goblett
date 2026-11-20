@@ -35,7 +35,7 @@ class CircleError extends Error {
 
 async function circle(env, path, { method = "GET", userToken, body } = {}) {
   if (!env.CIRCLE_API_KEY) throw new Error("server is missing CIRCLE_API_KEY")
-  const r = await fetch(API + path, {
+  const init = {
     method,
     headers: {
       Authorization: `Bearer ${env.CIRCLE_API_KEY}`,
@@ -43,7 +43,17 @@ async function circle(env, path, { method = "GET", userToken, body } = {}) {
       ...(userToken ? { "X-User-Token": userToken } : {}),
     },
     body: body && JSON.stringify({ idempotencyKey: crypto.randomUUID(), ...body }),
-  })
+  }
+  // A connection that doesn't open is tried again (on a poor network one in two can time
+  // out). The idempotency key is the same each time, so Circle acts on the request once.
+  let r
+  for (let attempt = 1; !r; attempt++) {
+    try {
+      r = await fetch(API + path, { ...init, signal: AbortSignal.timeout(6000) })
+    } catch (e) {
+      if (attempt === 3) throw new Error("couldn't reach Circle; check the connection and try again")
+    }
+  }
   const out = await r.json().catch(() => ({}))
   if (!r.ok) throw new CircleError(r.status, out.code, out.message)
   return out.data ?? {}
