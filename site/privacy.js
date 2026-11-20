@@ -1,4 +1,4 @@
-// How your vote stays private (privacy.html): a scroll story.
+// Why Goblett (why.html): one ballot's journey as a scroll story.
 //
 // The stage is pinned while the reader scrolls through #story. Scroll position becomes a
 // progress value p from 0 to 8, one unit per scene, and every piece on the 600 × 440 board

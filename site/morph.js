@@ -1,4 +1,4 @@
-// The closing token on privacy.html: the goblet mark melts into the liquid-metal blob.
+// The closing token on why.html: the goblet mark melts into the liquid-metal blob.
 //
 // Both shapes are drawn as the same number of outline points, starting at the top centre
 // and running clockwise, so every point on the goblet has a partner on the blob. Each frame

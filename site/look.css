@@ -404,22 +404,12 @@ body.home { min-height: 100svh; display: flex; flex-direction: column; }
 /* A new visit: the intro covers the page from the first paint (index.html adds .intro-first) */
 .intro-first body > :not(#intro) { visibility: hidden; }
 
-/* ---------- Why Goblett (why.html) ---------- */
-.why { flex: 1; width: min(100% - 32px, 760px); margin: 0 auto; padding: 40px 0 88px; display: grid; gap: 56px; }
-.why-head { display: grid; justify-items: center; text-align: center; }
-.why-token { width: 96px; height: 88px; margin-bottom: 28px; }
-.why h1 { margin: 0 0 10px; font: 500 clamp(24px, 3.4vw, 32px)/1.25 var(--sans); letter-spacing: -0.025em; }
-.why h1 span { display: block; }
-.why h1 .tone { color: var(--muted); }
-.why-sub { margin: 0; color: var(--muted); }
-.why-reasons { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.why-reasons li { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 16px; padding: 22px 22px 20px; box-shadow: var(--glass-hi), var(--float); display: grid; gap: 6px; align-content: start; }
-.why-n { font: 500 12px/1 var(--mono); color: var(--blue-soft); margin-bottom: 6px; }
-.why-reasons h3 { margin: 0; font: 500 17px/1.3 var(--sans); letter-spacing: -0.015em; }
-.why-reasons p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
+/* ---------- Why Goblett (why.html): the sections after the scroll story ---------- */
+.why { width: min(100% - 32px, 760px); margin: 0 auto; padding: 24px 0 72px; display: grid; gap: 56px; }
+.why-lead { margin: 0 0 22px; font: 500 clamp(22px, 3vw, 28px)/1.3 var(--sans); letter-spacing: -0.025em; }
+.why-lead span { display: block; }
+.why-lead .tone { color: var(--muted); }
 .why-h2 { margin: 0 0 18px; font: 500 13px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue-soft); }
-.why-kicker { margin: 0 0 14px; font: 500 13px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue-soft); }
-.why-head h1 { max-width: 22em; }
 /* The stakes: three big statements, each with one plain sentence under it */
 .why-stake-list { display: grid; }
 .why-stake { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 8px 32px; padding: 22px 0; border-top: 1px solid var(--line-2); align-items: baseline; }
@@ -435,10 +425,7 @@ body.home { min-height: 100svh; display: flex; flex-direction: column; }
 .why-row .yes::before { content: "✓ "; color: var(--blue-soft); }
 .why-row .no { color: var(--muted); }
 .why-row-us { background: linear-gradient(90deg, var(--blue-wash), transparent 85%); border-radius: 8px; padding-left: 10px; margin-left: -10px; }
-.why-honest { margin: 0; font-size: 14px; color: var(--muted); max-width: 46em; }
-.why-cta { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 18px; }
 @media (max-width: 640px) {
-  .why-reasons { grid-template-columns: minmax(0, 1fr); }
   .why-row { grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 8px; font-size: 13px; }
 }
 
