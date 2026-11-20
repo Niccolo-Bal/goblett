@@ -1,6 +1,6 @@
 
 <div align="center">
-<img src="media/goblett_logo.png" alt="logo" width="100px">
+<img src="media/goblett_logo_with_title.png" alt="logo" width="500px">
 </div>
 
 <header>
@@ -67,7 +67,12 @@ blockchain).
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Arc mainnet: [0x21F9ee5fbA61be8755E49eE7Cb7F679077429482](
   https://explorer.arc.io/address/0x21F9ee5fbA61be8755E49eE7Cb7F679077429482?tab=txs)
 
-### Relayer Addresses: 
+
+
+### Relayer: 
+
+We have one relayer pointed at both the testnet and mainnet Arc Nostr topics, deployed running the
+scripts in [/relayer](https://github.com/Niccolo-Bal/goblett-relayer/tree/main). Anyone is free to deploy their own.
 
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Arc testnet: &nbsp; [0x89D659eaA0Ff1E7527582D795bAaA4b43b168ee5](
   https://explorer.testnet.arc.io/address/0x89D659eaA0Ff1E7527582D795bAaA4b43b168ee5)
@@ -83,6 +88,13 @@ only signatures (which tie to the address). So doing this would require users to
 which is a huge security risk.
 
 ## Front-End Implementation
+
+Goblett is hosted live at [goblett.xyz](goblett.xyz)
+
+The biggest thing that we will add after the initial UBC hackathon is Apple Pay + Debit card support for the Arc onramp. The only reason 
+it was not done now is that it requires approval which takes several days.
+
+Faucet [0xCc516e2aBC427fa846DC37148966e76471f3428b](https://explorer.testnet.arc.io/address/0xCc516e2aBC427fa846DC37148966e76471f3428b)
 
 ## Limitations + Mitigants
 
@@ -128,3 +140,16 @@ The fix for this would be to have a third party or many parties run the relayer,
 Grok Bot was used consistently throughout the project primarily to check for vulnerabilities. A team of three
 specialist bots ("Red," "Blue," and "Scout") worked together to uncover several vulnerabilities at each step 
 of the project that were not found initially by devs or coding agents. See `AUDIT_REPORT.md`.
+
+<br>
+
+<br>
+
+<br>
+
+<div align="center">
+<em>Made by Niccolo Balestriere et al. from Blockchain@Emory</em>
+<br>
+<br>
+<img src="media/bae.png" alt="logo" width="800px">
+</div>

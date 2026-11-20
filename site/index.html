@@ -3,370 +3,179 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>goblett · private voting</title>
+    <title>Goblett · Anonymous elections on Arc</title>
+    <meta name="description" content="Anonymous voting on Arc for clubs, student governments and DAOs. Voters register with a wallet and vote from the browser with a zero-knowledge proof. Voters pay no gas." />
+    <link rel="icon" type="image/png" href="/goblett_logo.png" />
+    <meta name="theme-color" content="#060708" />
+    <script>
+      // Old links: /?election=0x… and /testnet opened the app at the site root.
+      ;(() => {
+        const q = new URLSearchParams(location.search)
+        const testnet = location.pathname.split("/")[1] === "testnet"
+        if (q.has("election") || testnet) {
+          if (testnet) q.set("network", "testnet")
+          location.replace("/app.html?" + q)
+        }
+      })()
+    </script>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header>
-      <a id="brand" class="brand" href="/">
-        <!-- The goblet and flame, redrawn in chrome with ember's blue glow -->
-        <svg class="brand-mark" viewBox="0 0 40 86" aria-hidden="true">
-          <defs>
-            <linearGradient id="markMetal" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0" stop-color="#5d5d66" /><stop offset="0.28" stop-color="#f7f7f9" /><stop offset="0.5" stop-color="#a3a3ac" />
-              <stop offset="0.74" stop-color="#2e2e35" /><stop offset="1" stop-color="#b9b9c0" />
-            </linearGradient>
-            <linearGradient id="markFlame" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0" stop-color="#cfe1ff" /><stop offset="0.45" stop-color="#4c8dff" /><stop offset="1" stop-color="#2f6fe8" />
-            </linearGradient>
-            <filter id="markGlow" x="-80%" y="-60%" width="260%" height="220%">
-              <feGaussianBlur stdDeviation="3.2" result="b" />
-              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
-          </defs>
-          <path class="flame" filter="url(#markGlow)" fill="url(#markFlame)"
-            d="M20 2C24 9 30 14 30 23c0 4 2 3 3-1 3 5 3 11-1 15h-6c2-4 0-8-3-10 1 4-2 7-3 10-1-3-4-6-3-10-3 2-5 6-3 10H8c-4-4-4-10-1-15 1 4 3 5 3 1 0-8 7-13 10-21z" />
-          <path fill="url(#markMetal)"
-            d="M3 39h34c0 11-5 19-13.5 23.5-1.5 1.5-1.9 3.5-1.9 6.5v8c0 2.5 3.4 4 9.4 5 2 .4 2 3 0 3H9c-2 0-2-2.6 0-3 6-1 9.4-2.5 9.4-5v-8c0-3-.4-5-1.9-6.5C8 58 3 50 3 39z" />
-          <path d="M3 39h34" stroke="rgba(255,255,255,.8)" stroke-width="1" />
-        </svg>
-        <span class="brand-name">goblett <span id="network" class="badge" hidden></span></span>
-        <span class="brand-sub">Private voting on Arc.</span>
-      </a>
-      <nav class="toolbar" aria-label="Site">
-        <a id="homeLink" class="tool" href="/" aria-label="Home">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 9.2 10 4l6.5 5.2V16a.5.5 0 0 1-.5.5h-3.5v-4h-5v4H4a.5.5 0 0 1-.5-.5z" /></svg>
-        </a>
-        <button id="guideBtn" class="tool" aria-label="How it works">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.6 7.4a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.6M10 14.6v.2" /><circle cx="10" cy="10" r="7" /></svg>
-        </button>
-      </nav>
-      <div id="wallet">
-        <span id="account" class="pill-muted">not connected</span>
-        <button id="connect" class="small">Connect wallet</button>
-      </div>
-    </header>
-
-    <!-- Guided intro: a terminal that "runs" goblett, then a chrome ballot token that explains it -->
-    <div id="intro" class="intro" hidden>
-      <div id="introTerm" class="term">
-        <div class="term-glass" aria-hidden="true"><span class="liquid term-blob"></span><span class="liquid term-blob two"></span></div>
-        <div class="term-body">
-          <div class="term-dots" aria-hidden="true"><i></i><i></i><i></i></div>
-          <p class="term-dim">voter@goblett ~ zsh</p>
-          <p class="term-dim"># a private vote, start to finish</p>
-          <p class="term-cmd"><span class="term-dim">~ $</span> <span id="termCmd"></span><span class="caret" id="termCaret"></span></p>
-          <div id="termOut" class="term-out"></div>
+    <section class="hero">
+      <div class="flame" aria-hidden="true"><i class="f1"></i><i class="f2"></i><i class="f3"></i><i class="f4"></i><i class="fade"></i></div>
+      <div class="grain" aria-hidden="true"></div>
+      <header class="topbar">
+        <div class="wrap">
+          <a class="brand" href="/"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett</a>
+          <nav class="nav home-nav" aria-label="Main">
+            <a href="#how">How it works</a>
+            <a href="#limits">Limits</a>
+            <a class="gh-link" href="https://github.com/Niccolo-Bal/goblett" rel="noopener"><svg class="gh" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>GitHub</a>
+            <a class="btn btn-ghost btn-sm" href="/app.html#signin">Sign in</a>
+          </nav>
         </div>
-        <div class="term-bar" id="termBar">
-          <span>Press <kbd>return ⏎</kbd> to run</span>
-          <button id="termRun" class="small">Run ⏎</button>
+      </header>
+      <div class="wrap hero-body">
+        <div class="hero-copy">
+          <h1>Trustless, anonymous<br /><span>voting on-chain.</span></h1>
+          <p class="hero-sub">For clubs, student governments and DAOs. Voters register once with a wallet, then vote from the browser with a zero-knowledge proof. Voters pay no gas.</p>
+          <div class="actions">
+            <a class="btn btn-lg" href="/app.html#new">Start an election</a>
+            <a class="link-arrow" href="/app.html">See your elections</a>
+          </div>
         </div>
       </div>
-      <div id="introGuide" class="guide" hidden>
-        <span class="liquid guide-token" aria-hidden="true"></span>
-        <p id="guideLine" class="guide-line" aria-live="polite"></p>
-        <div id="guideActions" class="guide-actions"></div>
-        <ol id="guideDots" class="guide-dots" aria-hidden="true"></ol>
-      </div>
-      <button id="introSkip" class="intro-skip link">Skip intro</button>
-    </div>
+    </section>
 
     <main>
-      <!-- Home: shown when no election is open -->
-      <section id="home">
-        <div class="hero">
-          <span class="liquid hero-token" aria-hidden="true"></span>
-          <h1><span>Vote in private.</span> <span class="tone">Verify in public.</span></h1>
-          <div class="hero-actions">
-            <button id="joinTile" class="secondary">Join an election</button>
-            <button id="createTile" class="secondary">Start one</button>
+      <section id="how" class="section how" aria-labelledby="how-h">
+        <div class="wrap">
+          <div class="section-head">
+            <h2 id="how-h">How a vote reaches Arc</h2>
+            <p>Registration and voting take different routes. Each hop sees only part of the picture, and no hop sees both your wallet and your ballot.</p>
           </div>
-          <button id="howBtn" class="link">How it works</button>
-        </div>
-        <div id="homeMsg"></div>
-        <div id="joinBox" class="card" hidden>
-          <h2>Open your election <span class="tone">Paste the link you were sent.</span></h2>
-          <button id="pasteLinkBtn" class="big">Paste link from clipboard</button>
-          <div class="or">or type it</div>
-          <div class="add-row">
-            <input id="joinInput" placeholder="goblett link or 0x… address" autocomplete="off" />
-            <button id="joinBtn" class="secondary">Open</button>
-          </div>
-          <div id="joinStatus"></div>
-        </div>
-        <dl class="facts">
-          <dt>Cost to voters</dt><dd>Free</dd>
-          <dt>Ballot linked to your wallet</dt><dd>Never</dd>
-          <dt>The count</dt><dd>Public</dd>
-        </dl>
-        <div id="recent"></div>
-      </section>
 
-      <!-- Election view -->
-      <section id="election" class="card needs-election">
-        <h2 id="title" class="election-title">Loading election…</h2>
-        <ol id="steps" class="steps">
-          <li id="stepRegister"><span class="dot">1</span>Register</li>
-          <li id="stepVote"><span class="dot">2</span>Vote</li>
-          <li id="stepResults"><span class="dot">3</span>Results</li>
-        </ol>
-        <div id="phaseNow" class="phase-now"></div>
-        <div class="row">
-          <button id="shareBtn" class="secondary small">Copy invite link</button>
-          <button id="refresh" class="secondary small">Refresh</button>
-        </div>
-        <details>
-          <summary>Election details</summary>
-          <dl id="info"></dl>
-        </details>
-        <button id="reclaimBtn" class="secondary" hidden>Return unused relayer funding to the creator</button>
-      </section>
-
-      <section id="register" class="card needs-election">
-        <h2>Register to vote</h2>
-        <p>
-          One tap with your wallet confirms you're on the voter list and creates a private <b>voter key</b> in this
-          browser. It's free and doesn't reveal your vote.
-        </p>
-        <div id="keyForge" class="forge" hidden>
-          <div class="forge-stage" aria-hidden="true">
-            <div class="forge-key">
-              <span class="forge-label">Voter key</span>
-              <span class="forge-text" id="forgeText"></span>
-              <span class="forge-note" id="forgeNote"></span>
+          <div class="flow dots">
+            <div class="flow-head">
+              <div class="side reg"><h3>Registration</h3><p>Once, with your wallet. Signing costs nothing and works on any network.</p></div>
+              <div class="side vote"><h3>Voting</h3><p>From the browser, with no wallet and no gas.</p></div>
             </div>
-            <span class="forge-chip"></span>
-            <div class="forge-list">
-              <span class="forge-list-label" id="forgeListLabel">Voter list</span>
-              <span class="forge-row"></span><span class="forge-row"></span><span class="forge-row"></span>
-              <span class="forge-row forge-new"></span>
-            </div>
+            <ol class="stops">
+              <li class="stop">
+                <strong class="hop">Your device</strong>
+                <p class="side reg"><span class="tag">Registration</span>Your wallet signs a commitment to a secret kept in this browser.</p>
+                <p class="side vote"><span class="tag">Voting</span>Your browser proves it holds one registered secret, without saying which.</p>
+              </li>
+              <li class="stop">
+                <strong class="hop">OHTTP relay</strong>
+                <p class="side reg"><span class="tag">Registration</span>Sees your IP address. The message stays encrypted.</p>
+                <p class="side vote"><span class="tag">Voting</span>Sees your IP address. The ballot stays encrypted.</p>
+              </li>
+              <li class="stop">
+                <strong class="hop">Nostr and a relayer</strong>
+                <p class="side reg"><span class="tag">Registration</span>See your wallet and commitment.</p>
+                <p class="side vote"><span class="tag">Voting</span>See the ballot and proof, not who sent them.</p>
+              </li>
+              <li class="stop end">
+                <strong class="hop">Arc</strong>
+                <p class="side reg"><span class="tag">Registration</span>Records that your wallet registered.</p>
+                <p class="side vote"><span class="tag">Voting</span>Counts the ballot. Its nullifier blocks a second vote.</p>
+              </li>
+            </ol>
           </div>
-          <ol class="seal-steps" id="forgeSteps">
-            <li>Create</li><li>Sign</li><li>Send</li><li>Registered</li>
-          </ol>
         </div>
-        <div id="regStatus"></div>
-        <button id="registerBtn" class="big" disabled>Register with MetaMask</button>
-        <details class="how">
-          <summary>How does this stay private?</summary>
-          <p class="muted">
-            Your browser generates a secret identity and MetaMask signs its public commitment. The signature is
-            published to Nostr and a relayer puts it on-chain, so your wallet pays no gas and can stay on whatever
-            network it is on (Ethereum, for example). The signature carries no vote.
-          </p>
-        </details>
       </section>
 
-      <section id="keyCard" class="card needs-election">
-        <h2>Your voter key</h2>
-        <div id="keyBody">
-          <label id="identityLabel">Voter key
-            <select id="identitySel"></select>
-          </label>
-          <p class="muted" id="keyWhy">
-            This key is the <b>only</b> way to cast your vote. Save a copy in case you clear this browser or switch
-            devices. Keep it private: anyone who has it can vote as you.
-          </p>
-          <div class="row">
-            <button id="downloadKeyBtn">Download key</button>
-            <button id="copyKeyBtn" class="secondary">Copy</button>
-            <button id="exportBtn" class="secondary">Show key</button>
+      <section class="section" aria-labelledby="feat">
+        <div class="wrap">
+          <div class="section-head">
+            <h2 id="feat">Ballots, voters and costs</h2>
+            <p>The candidates, voter list and schedule are fixed when you deploy. Nobody can change them afterwards, including you.</p>
           </div>
-          <pre id="exported" hidden></pre>
-          <label class="check"><input type="checkbox" id="savedKey" disabled /> I've saved my voter key somewhere safe</label>
-          <div id="keyStatus"></div>
-        </div>
-        <details id="importBox">
-          <summary>Registered in another browser? Load your key</summary>
-          <div class="row">
-            <label class="button secondary file-btn">Choose key file<input id="importFile" type="file" accept=".txt,text/plain" /></label>
-            <button id="pasteKeyBtn" class="secondary">Paste key</button>
-          </div>
-          <input id="importTxt" placeholder="or type your voter key" autocomplete="off" />
-          <button id="importBtn">Load key</button>
-          <div id="importStatus"></div>
-        </details>
-      </section>
-
-      <section id="vote" class="card needs-election">
-        <h2>Cast your vote</h2>
-        <p>Tap your choice. Your ballot is sent without your wallet, so nobody can tell it's yours.</p>
-        <div id="ballot"></div>
-        <!-- Shown while a vote is cast: the ballot is sealed into a token and dropped in the box. -->
-        <div id="sealer" class="sealer" hidden>
-          <div class="seal-stage" aria-hidden="true">
-            <div class="seal-token" id="sealToken">
-              <span class="seal-label" id="sealLabel">Your ballot</span>
-              <span class="seal-text" id="sealText"></span>
-              <span class="seal-sweep"></span>
+          <div class="bento">
+            <div class="tile">
+              <div><h3>Ranked choice, counted on-chain</h3><p>The contract runs the instant runoff, so everyone who checks gets the same winner.</p></div>
+              <div class="mini-list" aria-hidden="true">
+                <div><span class="rk">1</span>Carol</div>
+                <div><span class="rk two">2</span>Alice</div>
+                <div class="faint"><span class="rk none"></span>Bob</div>
+              </div>
             </div>
-            <div class="seal-box">
-              <span class="seal-slot"></span>
-              <span class="seal-box-label" id="sealBoxLabel">Ballot box</span>
+            <div class="tile">
+              <div><h3>Add voters by username</h3><p>Paste usernames or addresses. Goblett resolves each name to a wallet before you deploy.</p></div>
+              <div class="mini-table" aria-hidden="true">
+                <div><span>treasurer</span><span class="faint">0x41c2…9e</span></div>
+                <div><span>k.osei</span><span class="faint">0x0d77…13</span></div>
+                <div><span>vp_events</span><span class="err">no account yet</span></div>
+              </div>
+            </div>
+            <div class="tile">
+              <div><h3>Proofs made on the voter's device</h3><p>10 to 30 seconds in the browser, with each step and its timer on screen.</p></div>
+              <ol class="prog" aria-hidden="true">
+                <li class="done"><span>voter group rebuilt</span><span>0.4s</span></li>
+                <li class="active"><span>generating proof</span><span>12.1s</span></li>
+                <li class="bar"><i style="width: 62%"></i></li>
+                <li><span>sent privately</span><span>—</span></li>
+                <li><span>counted on Arc</span><span>—</span></li>
+              </ol>
+            </div>
+            <div class="tile">
+              <div><h3>Gas paid in USDC</h3><p>You fund the relayers when you deploy. Whatever they don't spend comes back after voting ends.</p></div>
+              <div class="mini-table" aria-hidden="true">
+                <div><span>bounty per registration or vote</span><span>0.0005 USDC</span></div>
+                <div><span>gas refunded up to</span><span>2× today's price</span></div>
+                <div><span>unused funding</span><span>reclaimable</span></div>
+              </div>
             </div>
           </div>
-          <ol class="seal-steps" id="sealSteps">
-            <li data-s="sealing">Seal</li><li data-s="dropping">Send</li><li data-s="inbox">Record</li><li data-s="counted">Counted</li>
-          </ol>
-        </div>
-        <button id="voteBtn" class="big" disabled>Submit my vote</button>
-        <div id="voteStatus"></div>
-        <details class="how">
-          <summary>How does this work?</summary>
-          <p class="muted">
-            Your browser proves "I hold one of the registered voter keys" without saying which, and publishes only
-            that proof to Nostr under a throwaway key, for any relayer to submit. No wallet is involved.
-          </p>
-        </details>
-      </section>
-
-      <section id="results" class="card needs-election">
-        <h2 id="resultsTitle">Results</h2>
-        <div id="tally"></div>
-      </section>
-
-      <section id="accountCard" class="card" hidden>
-        <h2>Your username</h2>
-        <p class="muted">
-          Optional. Lets organisers add you to elections by name instead of a long address. It plays no part in voting.
-        </p>
-        <div id="accountStatus"></div>
-        <div class="add-row">
-          <input id="usernameInput" placeholder="pick a username" maxlength="20" autocomplete="off" />
-          <button id="usernameBtn" class="secondary">Save</button>
-        </div>
-        <button id="lookupBtn" class="link">Look up my current username</button>
-      </section>
-
-      <button id="startOwnBtn" class="secondary needs-election start-own">Start your own election</button>
-
-      <!-- Create: a tap-through wizard. The hidden inputs keep the values createElection() reads. -->
-      <section id="createCard" class="card wizard">
-        <div class="wiz-head">
-          <button id="createCancel" class="link">Cancel</button>
-          <ol class="wiz-steps" id="wizSteps">
-            <li>Ballot</li><li>Voters</li><li>Timing</li><li>Launch</li>
-          </ol>
-        </div>
-
-        <div class="wiz-step" data-step="0">
-          <h2>What's the vote about?</h2>
-          <p class="muted">Pick a starting point, then adjust.</p>
-          <div class="chips" id="presetChips">
-            <button class="chip" data-preset="yesno">Yes / No</button>
-            <button class="chip" data-preset="yesnoabstain">Yes / No / Abstain</button>
-            <button class="chip" data-preset="president">Elect a person</button>
-            <button class="chip" data-preset="rank">Rank options</button>
-          </div>
-          <label>Title <input id="newTitle" placeholder="e.g. Club president 2026" autocomplete="off" /></label>
-
-          <h3>How do people vote?</h3>
-          <div class="choice-grid" id="kindChoices">
-            <button class="choice-tile" data-kind="fptp"><b>Pick one</b><span>Most votes wins</span></button>
-            <button class="choice-tile" data-kind="ranked"><b>Rank them</b><span>Instant runoff</span></button>
-          </div>
-          <select id="newKind" hidden>
-            <option value="fptp">First past the post (pick one)</option>
-            <option value="ranked">Ranked choice (instant runoff)</option>
-          </select>
-
-          <h3>Choices on the ballot</h3>
-          <div id="candChips" class="chip-list"></div>
-          <div class="add-row">
-            <input id="candInput" placeholder="Add a choice, e.g. Alice" autocomplete="off" />
-            <button id="candAdd" class="secondary">+ Add</button>
-          </div>
-          <textarea id="newCands" hidden></textarea>
-        </div>
-
-        <div class="wiz-step" data-step="1">
-          <h2>Who can vote?</h2>
-          <div class="choice-grid" id="voterChoices">
-            <button class="choice-tile" data-voters="me"><b>Just me</b><span>A private test run</span></button>
-            <button class="choice-tile" data-voters="group"><b>A group</b><span>Wallets or usernames</span></button>
-          </div>
-          <div id="voterGroup" hidden>
-            <button id="pasteVoters" class="big secondary">Paste a list from clipboard</button>
-            <p class="muted">Wallet addresses or goblett usernames, separated by lines, commas or spaces.</p>
-            <div id="voterChips" class="chip-list"></div>
-            <div class="add-row">
-              <input id="voterInput" placeholder="0x… address or username" autocomplete="off" />
-              <button id="voterAdd" class="secondary">+ Add</button>
-            </div>
-            <div id="whitelistPreview"></div>
-          </div>
-          <textarea id="newWhitelist" hidden></textarea>
-        </div>
-
-        <div class="wiz-step" data-step="2">
-          <h2>When?</h2>
-          <h3>Sign-up window</h3>
-          <p class="muted">Voters register during this time. Voting opens right after.</p>
-          <div class="chips" id="regChips">
-            <button class="chip" data-secs="900">15 min</button>
-            <button class="chip" data-secs="3600">1 hour</button>
-            <button class="chip" data-secs="86400">1 day</button>
-            <button class="chip" data-secs="259200">3 days</button>
-            <button class="chip" data-secs="604800">1 week</button>
-          </div>
-          <h3>Voting window</h3>
-          <div class="chips" id="voteChips">
-            <button class="chip" data-secs="1800">30 min</button>
-            <button class="chip" data-secs="3600">1 hour</button>
-            <button class="chip" data-secs="86400">1 day</button>
-            <button class="chip" data-secs="259200">3 days</button>
-            <button class="chip" data-secs="604800">1 week</button>
-          </div>
-          <div id="schedulePreview" class="callout"></div>
-          <details>
-            <summary>Pick exact dates instead</summary>
-            <label>Registration ends <input id="newRegEnd" type="datetime-local" /></label>
-            <label>Voting ends <input id="newVoteEnd" type="datetime-local" /></label>
-            <p id="chainClock" class="muted"></p>
-          </details>
-        </div>
-
-        <div class="wiz-step" data-step="3">
-          <h2>Review and launch</h2>
-          <dl id="review"></dl>
-          <p class="muted">
-            Your wallet pays the setup and pre-funds the relayers so voters pay nothing. Unused funds come back to you
-            after voting ends. Once launched, nobody, including you, can change the election.
-          </p>
-          <details>
-            <summary>Advanced settings</summary>
-            <label>Minimum registrations before voting can open
-              <input id="newMinAnon" type="number" min="1" placeholder="default: 2, or 1 for a single voter" />
-            </label>
-            <label>Relayer bounty per registration/vote (<span class="sym"></span>), on top of their gas
-              <input id="newBounty" type="number" min="0" step="0.0001" value="0.0005" />
-            </label>
-            <label>Highest gas price you will refund (gwei)
-              <input id="newMaxGasPrice" type="number" min="0" step="1" />
-            </label>
-            <label>Relayer funding to send now (<span class="sym"></span>)
-              <input id="newFunding" type="number" min="0" step="any" />
-            </label>
-            <p id="fundingHint" class="muted"></p>
-          </details>
-          <button id="createBtn" class="big">Launch election</button>
-          <div id="createStatus"></div>
-        </div>
-
-        <div class="wiz-nav">
-          <button id="wizPrev" class="secondary">Back</button>
-          <span id="wizError" class="err"></span>
-          <button id="wizNext">Continue</button>
         </div>
       </section>
 
-      <details id="logBox">
-        <summary>Activity log</summary>
-        <pre id="log"></pre>
-      </details>
+      <section id="limits" class="section" aria-labelledby="limits-h">
+        <div class="wrap">
+          <div class="section-head"><h2 id="limits-h">Known limits</h2></div>
+          <dl class="limits">
+            <div><dt>Your secret lives in your browser</dt><dd>It is the only way to vote. Back it up from the election page; anyone holding it can vote as you.</dd></div>
+            <div><dt>The tally is public while voting runs</dt><dd>Counts update as votes land. Who cast them does not appear anywhere.</dd></div>
+            <div><dt>We run today's OHTTP relay</dt><dd>Independent relays would remove that last point of trust. They are next on the roadmap.</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="section relay" aria-labelledby="relay">
+        <div class="wrap split" style="align-items: center">
+          <div class="main" style="flex: 1 1 440px; gap: 20px">
+            <h2 id="relay" class="h2">Relayers earn a bounty per vote</h2>
+            <p class="muted" style="margin: 0">A relayer listens on Nostr, checks each proof and submits it. The election refunds its gas plus the bounty. Changing a ballot breaks its proof, so no relayer has to be trusted.</p>
+            <div><a class="link-arrow" href="https://github.com/Niccolo-Bal/goblett/tree/main/relayer" rel="noopener">Read the relayer guide</a></div>
+          </div>
+          <pre class="terminal" style="flex: 1 1 440px; min-width: 0"><span class="p">$</span> cd relayer
+<span class="p">$</span> pip install -r requirements.txt
+<span class="p">$</span> python relayer.py
+<span class="p">listening on goblett-5042</span>
+<span class="b">proof ok · vote relayed · gas + bounty refunded</span></pre>
+        </div>
+      </section>
+
+      <section class="close dots" aria-labelledby="close">
+        <div class="glow" aria-hidden="true"></div>
+        <div class="wrap">
+          <h2 id="close">Hold your next<br />election in the dark.</h2>
+          <a class="btn btn-lg" href="/app.html#new">Start an election</a>
+        </div>
+        <footer class="footer">
+          <div class="wrap">
+            <span class="brand"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett</span>
+            <nav aria-label="Footer">
+              <a href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
+              <a href="/app.html">Elections</a>
+              <a href="https://github.com/Niccolo-Bal/goblett/tree/main/relayer" rel="noopener">Run a relayer</a>
+              <span>UBC Hackathon 2026</span>
+            </nav>
+          </div>
+        </footer>
+      </section>
     </main>
-    <script type="module" src="/main.js"></script>
+    <script type="module" src="/home.js"></script>
   </body>
 </html>
