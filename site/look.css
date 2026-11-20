@@ -415,9 +415,18 @@ body.home { min-height: 100svh; display: flex; flex-direction: column; }
 .why-reasons { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .why-reasons li { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 16px; padding: 22px 22px 20px; box-shadow: var(--glass-hi), var(--float); display: grid; gap: 6px; align-content: start; }
 .why-n { font: 500 12px/1 var(--mono); color: var(--blue-soft); margin-bottom: 6px; }
-.why-reasons h2 { margin: 0; font: 500 17px/1.3 var(--sans); letter-spacing: -0.015em; }
+.why-reasons h3 { margin: 0; font: 500 17px/1.3 var(--sans); letter-spacing: -0.015em; }
 .why-reasons p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
-.why-compare h2 { margin: 0 0 14px; font: 500 17px/1.3 var(--sans); }
+.why-h2 { margin: 0 0 18px; font: 500 13px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue-soft); }
+.why-kicker { margin: 0 0 14px; font: 500 13px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue-soft); }
+.why-head h1 { max-width: 22em; }
+/* The stakes: three big statements, each with one plain sentence under it */
+.why-stake-list { display: grid; }
+.why-stake { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 8px 32px; padding: 22px 0; border-top: 1px solid var(--line-2); align-items: baseline; }
+.why-stake:last-child { border-bottom: 1px solid var(--line-2); }
+.why-stake p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.why-stake .why-big { color: var(--text); font: 500 21px/1.3 var(--sans); letter-spacing: -0.02em; }
+@media (max-width: 640px) { .why-stake { grid-template-columns: minmax(0, 1fr); } .why-stake .why-big { font-size: 19px; } }
 .why-table { display: grid; font-size: 14px; border-top: 1px solid var(--line-2); }
 .why-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: center; }
 .why-row-head { color: var(--muted); font-size: 13px; }
