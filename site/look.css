@@ -358,3 +358,25 @@ body.intro-open { overflow: hidden; }
 .intro button.link { background: none; box-shadow: none; color: var(--muted); min-height: 0; padding: 4px 0; font-weight: 400; }
 .intro button.link:hover { color: var(--text); background: none; }
 #vote.sealing #ballot, #vote.sealing .vote-row { display: none; }
+
+/* ---------- Landing page: a short calling card around the liquid-metal token ---------- */
+body.home { min-height: 100svh; display: flex; flex-direction: column; }
+.home .topbar .wrap { padding-top: 18px; padding-bottom: 18px; }
+.home .nav button.link { background: none; box-shadow: none; min-height: 44px; padding: 0; color: var(--muted); font: inherit; }
+.home .nav button.link:hover { color: var(--text); }
+.calling { flex: 1; display: grid; justify-items: center; align-content: center; text-align: center; gap: 0; padding: 24px 16px 72px; }
+.calling-token { width: 150px; height: 138px; padding: 0; margin-bottom: 34px; background: none; box-shadow: none; border-radius: 50%; cursor: pointer; }
+.calling-token:hover { background: none; transform: scale(1.03); }
+.calling-token .liquid { width: 100%; height: 100%; }
+.calling h1 { margin: 0 0 10px; font: 500 22px/1.35 var(--sans); letter-spacing: -0.022em; }
+.calling h1 span { display: block; }
+.calling h1 .tone { color: var(--muted); }
+.calling-sub { margin: 0 0 26px; max-width: 30em; color: var(--muted); font-size: 15px; }
+.calling-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.calling-how { margin-top: 14px; background: none; box-shadow: none; min-height: 0; padding: 4px 0; color: var(--muted); font-weight: 400; }
+.calling-how:hover { background: none; color: var(--text); }
+.facts { width: min(100%, 340px); margin: 40px 0 0; display: grid; gap: 6px; font-size: 14px; }
+.facts > div { display: flex; justify-content: space-between; gap: 16px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+@media (max-width: 480px) { .calling-actions > .btn { flex: 1 1 auto; } }
