@@ -53,7 +53,8 @@ async function send(request, env) {
   let txHash
   try {
     const [has, left, nonce, block] = await Promise.all([
-      rpc(cfg.rpcUrl, "eth_getBalance", [address, "latest"]),
+      // "pending", so a second request sent before the first transfer is mined sees it (R5-2).
+      rpc(cfg.rpcUrl, "eth_getBalance", [address, "pending"]).catch(() => rpc(cfg.rpcUrl, "eth_getBalance", [address, "latest"])),
       rpc(cfg.rpcUrl, "eth_getBalance", [faucet.address, "latest"]),
       rpc(cfg.rpcUrl, "eth_getTransactionCount", [faucet.address, "pending"]).catch(() => rpc(cfg.rpcUrl, "eth_getTransactionCount", [faucet.address, "latest"])),
       rpc(cfg.rpcUrl, "eth_getBlockByNumber", ["latest", false]),

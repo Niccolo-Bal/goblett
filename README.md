@@ -139,6 +139,12 @@ The current OHTTP setup uses a relayer run by us, so we could hypothetically pai
 
 The fix for this would be to have a third party or many parties run the relayer, which would be possible to implement with more time.
 
+### Email and Google Sign-In Go Through Our Server
+
+Signing in without a wallet extension uses Circle's wallets, and those requests pass through the site's server, so we
+see the email, the wallet and the IP together. Voting identities are still random and stay in the browser, so this
+never links a voter to a vote. Use a wallet extension to avoid it.
+
 ## Grok Bot Usage (for SpaceXSI Bounty)
 
 Grok Bot was used consistently throughout the project primarily to check for vulnerabilities. A team of three

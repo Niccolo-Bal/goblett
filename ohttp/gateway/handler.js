@@ -13,6 +13,9 @@
 //                        -> forwarded to the configured Nostr relays
 //   POST /rpc/<chainId>  body: JSON-RPC (single or small batch), read-only methods only
 //                        -> forwarded to that chain's RPC
+//   POST /elections      body: { chainId, wallet }
+//                        -> the site's election list for that wallet (GET ELECTIONS_URL), so the
+//                           site's server sees the wallet but not the visitor's address
 //
 // Plain (unencrypted) endpoint:  GET /ohttp-keys  -> the public key configuration.
 //
@@ -22,6 +25,7 @@
 //   OHTTP_SEED     64 hex chars; the private key is derived from it. SECRET. (keygen.mjs)
 //   NOSTR_RELAYS   comma-separated wss:// URLs
 //   RPC_URLS       JSON object: chain id -> RPC URL, e.g. {"5042":"https://rpc.mainnet.arc.io"}
+//   ELECTIONS_URL  the site's election list, default https://goblett.xyz/api/elections
 //   RELAY_TOKEN    SECRET shared with the relay. When set, encrypted requests must carry it
 //                  (X-Relay-Token), so the gateway can't be used without going through the
 //                  relay and its per-address rate limit (R4-5).
@@ -153,10 +157,23 @@ export function createGateway(env, { fetchImpl = fetch, WebSocketImpl = globalTh
     return new Response(await upstream.text(), { status: upstream.status, headers: { "Content-Type": "application/json" } })
   }
 
+  // The lobby's "your elections" list (Scout's final-round item 2).
+  async function elections(inner) {
+    const b = await inner.json().catch(() => null)
+    const chainId = Number(b?.chainId)
+    const wallet = String(b?.wallet ?? "").toLowerCase()
+    if (!Number.isSafeInteger(chainId) || chainId <= 0 || !/^0x[0-9a-f]{40}$/.test(wallet)) return json(400, { error: "chainId and wallet are required" })
+    const url = new URL(env.ELECTIONS_URL || "https://goblett.xyz/api/elections")
+    url.search = new URLSearchParams({ chainId: String(chainId), wallet }).toString()
+    const upstream = await fetchImpl(url.toString(), { headers: { Accept: "application/json" } })
+    return new Response(await upstream.text(), { status: upstream.status, headers: { "Content-Type": "application/json" } })
+  }
+
   async function route(inner) {
     const path = new URL(inner.url).pathname
     if (inner.method !== "POST") return json(405, { error: "POST only" })
     if (path === "/publish") return publish(inner)
+    if (path === "/elections") return elections(inner)
     const m = /^\/rpc\/(\d+)$/.exec(path)
     if (m) return rpc(inner, m[1])
     return json(404, { error: "unknown gateway route" })
