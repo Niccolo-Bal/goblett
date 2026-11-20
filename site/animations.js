@@ -30,14 +30,19 @@ const FORGE_NOTE = {
   registered: "Saved in this browser",
 }
 let forgeTimer
+// Stages only move forward: a delayed step must never undo a later one.
+const FORGE_ORDER = { forging: 0, signing: 1, sending: 2, recording: 3, registered: 4 }
 function forge(state) {
   const el = $("keyForge")
   if (!el) return
   if (!state) {
     clearInterval(forgeTimer)
     el.hidden = true
+    delete el.dataset.state
     return
   }
+  const now = el.hidden ? -1 : FORGE_ORDER[el.dataset.state] ?? -1
+  if (state !== "forging" && FORGE_ORDER[state] < now) return
   el.hidden = false
   el.dataset.state = state
   $("forgeNote").textContent = FORGE_NOTE[state]
@@ -62,6 +67,9 @@ function onRegister({ at, total, failed }) {
 
 // ---- voting: the sealed ballot ----
 let sealTimer
+// Stages only move forward: a delayed step (the drop, "Recording") must never undo a later one
+// ("Counted"), which happens when the vote is confirmed quickly.
+const SEAL_ORDER = { ready: 0, sealing: 1, sealed: 2, dropping: 3, inbox: 4, counted: 5 }
 function seal(state, text) {
   const el = $("sealer")
   if (!el) return
@@ -69,9 +77,12 @@ function seal(state, text) {
   if (!state) {
     clearInterval(sealTimer)
     el.hidden = true
+    delete el.dataset.state
     vote?.classList.remove("sealing")
     return
   }
+  const now = el.hidden ? -1 : SEAL_ORDER[el.dataset.state] ?? -1
+  if (state !== "ready" && SEAL_ORDER[state] < now) return
   el.hidden = false
   el.dataset.state = state
   vote?.classList.add("sealing")
@@ -108,7 +119,11 @@ function onVote({ at, total, failed }) {
     const go = () => seal("inbox")
     // Let the token finish its drop before the box starts waiting.
     $("sealer").dataset.state === "sealed" ? later(1300, go) : later(900, go)
-  } else if (at >= total) later(400, () => seal("counted"))
+  } else if (at >= total) {
+    // If the token hasn't dropped yet (a fast confirmation), let it drop, then show "Counted".
+    const st = $("sealer").dataset.state
+    later(st === "sealed" ? 1900 : st === "dropping" ? 1000 : 400, () => seal("counted"))
+  }
 }
 
 document.addEventListener("goblett:steps", (e) => {
