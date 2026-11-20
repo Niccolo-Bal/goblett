@@ -11,6 +11,6 @@
   "ratelimits": [{ "name": "LIMITER", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } }],
   "vars": {
     "GATEWAY_URL": "https://gateway.goblett.xyz/",
-    "ALLOWED_ORIGINS": "https://goblett.xyz,https://ux.goblett.xyz,http://localhost:5173"
+    "ALLOWED_ORIGINS": "https://goblett.xyz,https://ux.goblett.xyz,https://ember.goblett.xyz,http://localhost:5173"
   }
 }
