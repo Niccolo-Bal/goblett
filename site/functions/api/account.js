@@ -14,25 +14,9 @@
 
 import { verifyTypedData } from "ethers"
 import { ACCOUNT_DOMAIN, ACCOUNT_TYPES, MAX_SIGNATURE_AGE_S, USERNAME_RE, USERNAME_RULES } from "../../account-terms.js"
+import { ADDRESS_RE, db, json } from "../db.js"
 
-const ADDRESS_RE = /^0x[0-9a-f]{40}$/
 const MAX_LOOKUP = 100
-
-const json = (status, body) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } })
-
-function db(env, path, init = {}) {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SECRET_KEY) throw new Error("server is missing SUPABASE_URL / SUPABASE_SECRET_KEY")
-  return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: env.SUPABASE_SECRET_KEY,
-      Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
-      "Content-Type": "application/json",
-      ...init.headers,
-    },
-  })
-}
 
 // PostgREST answers 404 when the table itself is missing (the SQL was never run).
 const dbError = (r) =>

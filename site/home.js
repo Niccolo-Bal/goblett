@@ -5,6 +5,8 @@
 //     and drifts a little against the scroll, so the section reads slower.
 //  2. Dot fields drift slower than the page.
 //  3. Other content rises into place once as it enters the screen.
+import "./fonts.js"
+
 const flow = document.querySelector("#how .flow")
 const fields = [...document.querySelectorAll(".dots")]
 const calm = matchMedia("(prefers-reduced-motion: reduce)")

@@ -1,21 +1,25 @@
 // Page chrome for app.html: the #new view, the five-step create wizard and the
-// "open by link" form. Chain logic and every element main.js writes to live in main.js.
+// "open by address" form. Chain logic and every element main.js writes to live in main.js.
 
 const $ = (id) => document.getElementById(id)
 
 // ---------------------------------------------------------------------------
-// Views: #new shows the create wizard, anything else the election (or the lobby).
+// Views: #new shows the create wizard, #signin the sign-in card, anything else the
+// election (or the lobby).
 // ---------------------------------------------------------------------------
 function route() {
-  const view = location.hash === "#new" ? "new" : "election"
+  const view = location.hash === "#new" ? "new" : location.hash === "#signin" ? "signin" : "election"
   document.body.dataset.view = view
   $("createCard").hidden = view !== "new"
+  $("signinCard").hidden = view !== "signin"
+  // Where to return to after signing in (main.js reads it).
+  if (view !== "signin") sessionStorage.setItem("goblett:back", location.hash)
   for (const a of document.querySelectorAll("[data-nav]")) {
     const here = a.dataset.nav === view || (a.dataset.nav === "lobby" && view === "election" && !document.body.classList.contains("has-election"))
     if (here) a.setAttribute("aria-current", "page")
     else a.removeAttribute("aria-current")
   }
-  if (view === "new") window.scrollTo(0, 0)
+  if (view !== "election") window.scrollTo(0, 0)
 }
 window.addEventListener("hashchange", route)
 route()
@@ -112,21 +116,13 @@ tabs.forEach((b) => (b.onclick = () => go(Number(b.dataset.goto))))
 show(1)
 
 // ---------------------------------------------------------------------------
-// Open an election by link or address
+// Open an election by contract address (the manual route; the lobby lists the rest)
 // ---------------------------------------------------------------------------
 $("openForm").addEventListener("submit", (ev) => {
   ev.preventDefault()
-  const raw = $("openInput").value.trim()
-  const fromUrl = (() => {
-    try {
-      return new URL(raw).searchParams.get("election")
-    } catch {
-      return null
-    }
-  })()
-  const address = fromUrl ?? raw
+  const address = $("openInput").value.trim()
   if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
-    $("openStatus").innerHTML = `<p class="err">That isn't an election link or a 0x… address.</p>`
+    $("openStatus").innerHTML = `<p class="err">That isn't a 0x… contract address.</p>`
     return
   }
   const q = new URLSearchParams(location.search)

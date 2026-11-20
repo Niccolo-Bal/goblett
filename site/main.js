@@ -9,6 +9,7 @@
 // the relayer: the server would otherwise be able to compute your nullifier
 // (deanonymize you) and vote as you.
 
+import "./fonts.js"
 import { ethers } from "ethers"
 import { Identity } from "@semaphore-protocol/identity"
 import { Group } from "@semaphore-protocol/group"
@@ -17,23 +18,11 @@ import { generateProof } from "@semaphore-protocol/proof"
 import { publish, confirm } from "./nostr.js"
 import { ohttp } from "./ohttp.js"
 import { usernamesOf, addressesOf, claimUsername, USERNAME_RE, USERNAME_RULES } from "./accounts.js"
+import { electionsFor, listElection } from "./elections.js"
+import { circleConfig, circleProvider, savedSession, forgetSession, loginWithEmail, loginWithGoogle, finishGoogleLogin } from "./circle-wallet.js"
+import { matchKind } from "./election-kind.js"
 // ABI + creation bytecode of both election types, exported by relayer/setup_chain.py.
 import CONTRACTS from "./contracts.json"
-
-const maskImmutables = (hex, refs) => {
-  const b = ethers.getBytes(hex)
-  for (const list of Object.values(refs ?? {})) for (const r of list) b.fill(0, r.start, r.start + r.length)
-  return ethers.hexlify(b)
-}
-const TEMPLATES = Object.fromEntries(
-  ["fptp", "ranked"].filter((k) => CONTRACTS[k]?.deployedBytecode).map((k) => [k, maskImmutables(CONTRACTS[k].deployedBytecode, CONTRACTS[k].immutableReferences)])
-)
-const matchKind = (code) => {
-  for (const [k, t] of Object.entries(TEMPLATES)) {
-    if (code.length === t.length && maskImmutables(code, CONTRACTS[k].immutableReferences) === t) return k
-  }
-  return null
-}
 
 const ABI = [
   "function title() view returns (string)",
@@ -72,6 +61,9 @@ const setStatus = (id, msg, cls = "") => {
 }
 
 let cfg, provider, election, account, state
+// Resolves once init() has the chain config and a provider (false if it couldn't get them).
+let chainReady
+const whenChainReady = new Promise((resolve) => (chainReady = resolve))
 
 // Chain reads that would give a voter away (is MY registration in? is MY nullifier used?)
 // go through the OHTTP channel when the deployment has one, so the RPC operator sees the
@@ -141,6 +133,7 @@ async function init() {
     cfg = await (await fetch(`/election${NETWORK ? "." + NETWORK : ""}.json`, { cache: "no-store" })).json()
   } catch {
     lobbyMessage(`Chain not set up${NETWORK ? ` for ${NETWORK}` : ""} (run relayer/setup_chain.py, then reload).`)
+    chainReady(false)
     return
   }
   if (NETWORK) {
@@ -149,12 +142,14 @@ async function init() {
   }
   const net = ethers.Network.from(cfg.chainId)
   provider = new ethers.JsonRpcProvider(cfg.rpcUrl, net, { staticNetwork: net, cacheTimeout: -1 })
+  chainReady(true)
+  showSigninOptions()
   initCreateForm().catch((e) => log(errMsg(e)))
 
   // Which election? ?election=0x... in the URL, else the config's default (if any).
   const q = new URLSearchParams(location.search)
   const fromUrl = q.get("election")
-  if (!fromUrl && !cfg.election) return
+  if (!fromUrl && !cfg.election) return showLobby()
   try {
     if (fromUrl) cfg.election = ethers.getAddress(fromUrl)
     // Verify before rendering anything the contract returns (R3-6): its runtime code
@@ -167,8 +162,8 @@ async function init() {
     cfg.kind = kind
     election = c
   } catch (e) {
-    lobbyMessage(`There's no Goblett election at ${fromUrl ?? cfg.election} on ${cfg.chainName ?? "chain " + cfg.chainId}. Check the link, or start a new one.`)
-    return
+    lobbyMessage(`There's no Goblett election at ${fromUrl ?? cfg.election} on ${cfg.chainName ?? "chain " + cfg.chainId}. Check the address, or start a new one.`)
+    return showLobby()
   }
   document.body.classList.add("has-election")
   document.title = "Goblett · Loading election…"
@@ -332,22 +327,231 @@ async function _refresh() {
 const wallets = []
 window.addEventListener("eip6963:announceProvider", (ev) => wallets.push(ev.detail))
 window.dispatchEvent(new Event("eip6963:requestProvider"))
-let eth // the EIP-1193 provider we talk to
+// The EIP-1193 provider we talk to: MetaMask, or the stand-in circle-wallet.js makes for
+// someone who signed in by email or Google.
+let eth
+let circleLabel // their email, when signed in that way
 
-async function connect() {
+const SIGNED_OUT = "goblett:signedOut" // set by "Sign out": don't reconnect by ourselves
+let listening // the provider whose account changes we follow
+
+// Someone who signed in by email shouldn't need to know there is a wallet underneath:
+// they get plainer words, and no addresses. say() picks the wording; elements in
+// app.html carry theirs in data-plain.
+const plain = () => !!(account && eth?.isCircle)
+const say = (withWallet, withEmail) => (plain() ? withEmail : withWallet)
+function applyWording() {
+  document.body.classList.toggle("plain", plain())
+  for (const el of document.querySelectorAll("[data-plain]")) {
+    el.dataset.wallet ??= el.textContent
+    el.textContent = plain() ? el.dataset.plain : el.dataset.wallet
+  }
+}
+
+function pickWallet() {
   const mm = wallets.find((w) => w.info.rdns === "io.metamask") ?? wallets.find((w) => w.info.rdns?.startsWith("io.metamask"))
   eth = mm?.provider ?? window.ethereum
-  if (!eth) throw new Error("No wallet found. Install MetaMask, then reload.")
+  return mm
+}
+
+function useAccount(acc) {
+  account = acc ? ethers.getAddress(acc) : undefined
+  walletCache = undefined
+  applyWording()
+  resetAccount()
+  loadLobby()
+  if (listening !== eth && eth?.on) {
+    const wallet = (listening = eth)
+    wallet.on("accountsChanged", (accs) => {
+      // Not while signed out, or signed in some other way.
+      if (eth !== wallet || localStorage.getItem(SIGNED_OUT)) return
+      useAccount(accs[0])
+      refresh()
+    })
+  }
+}
+
+// Adopt an email/Google session (from a sign-in just now, or saved in this browser).
+function useCircle(session) {
+  eth = circleProvider(session, provider, () => {
+    signOut()
+    location.hash = "#signin"
+  })
+  circleLabel = session.label
+  localStorage.removeItem(SIGNED_OUT)
+  useAccount(session.address)
+}
+
+// For actions that need an account: send a signed-out visitor to the sign-in card.
+function requireAccount() {
+  if (account) return
+  location.hash = "#signin"
+  throw new Error("sign in first")
+}
+
+async function connect() {
+  const mm = pickWallet()
+  if (!eth) throw new Error("MetaMask was not found in this browser. Install it, then reload this page.")
   log(`using wallet: ${mm ? mm.info.name : "window.ethereum"}${wallets.length > 1 ? ` (found ${wallets.map((w) => w.info.name).join(", ")})` : ""}`)
   const [acc] = await eth.request({ method: "eth_requestAccounts" })
-  account = ethers.getAddress(acc)
-  resetAccount()
-  eth.on?.("accountsChanged", (accs) => {
-    account = accs[0] ? ethers.getAddress(accs[0]) : undefined
-    resetAccount()
-    refresh()
-  })
+  localStorage.removeItem(SIGNED_OUT)
+  forgetSession() // one account at a time
+  useAccount(acc)
   await refresh()
+}
+
+// ---- Sign in: connect the wallet, then make sure it has a username ----
+// Which half of the sign-in card is showing.
+function signinStep(step) {
+  $("signinConnect").hidden = step !== "connect"
+  $("signinName").hidden = step !== "name"
+  if (step === "name") {
+    $("signinWho").textContent = say(`${account.slice(0, 6)}…${account.slice(-4)}`, circleLabel)
+    setStatus("claimStatus", "")
+    // Offer the part of the email before the @, where that makes a valid username.
+    const guess = plain() ? (circleLabel ?? "").split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 20) : ""
+    if (!$("newUsername").value && USERNAME_RE.test(guess)) $("newUsername").value = guess
+    $("newUsername").focus()
+  }
+}
+
+// Back to the view the visitor came from.
+function leaveSignin() {
+  signinStep("connect")
+  setStatus("signinStatus", "")
+  setStatus("claimStatus", "")
+  $("newUsername").value = ""
+  if (location.hash === "#signin") location.hash = sessionStorage.getItem("goblett:back") ?? ""
+}
+
+// After the wallet is connected: look its username up, and ask for one if it has none.
+// The lookup sends the wallet address to goblett's server over a direct connection, so it
+// runs only here, when the visitor signs in (the card says so), never on a page load (R4-3).
+// (The lobby's election list is the exception: it asks for a signed-in wallet's elections
+// whenever the lobby is shown. See loadLobby.)
+async function afterConnect() {
+  const wallet = account
+  if (username) return leaveSignin()
+  setStatus("signinStatus", "Looking up your username…", "hint")
+  let name
+  try {
+    name = (await usernamesOf([wallet])).get(wallet.toLowerCase())
+  } catch (e) {
+    // The accounts service being down must not block signing in.
+    log(`username lookup failed: ${errMsg(e)}`)
+    return leaveSignin()
+  }
+  if (wallet !== account) return // the wallet changed while we were asking
+  if (name) {
+    rememberUsername(name)
+    leaveSignin()
+  } else {
+    setStatus("signinStatus", "")
+    signinStep("name")
+  }
+}
+
+// One sign-in at a time, whichever way.
+async function signingIn(message, how) {
+  const buttons = ["connect", "emailBtn", "googleBtn"].map($)
+  for (const b of buttons) b.disabled = true
+  setStatus("signinStatus", message, "hint")
+  try {
+    await how()
+    await afterConnect()
+  } catch (e) {
+    log(errMsg(e))
+    setStatus("signinStatus", e.code === 4001 ? "Sign-in cancelled." : errMsg(e), "err")
+  } finally {
+    for (const b of buttons) b.disabled = false
+  }
+}
+
+const signIn = () => signingIn("Approve the connection in MetaMask…", connect)
+
+// By email: Circle emails a code and asks for it in its own window (circle-wallet.js).
+function signInWithEmail(ev) {
+  ev.preventDefault()
+  const email = $("emailInput").value.trim()
+  return signingIn(`We're emailing a code to ${email}. Enter it in the window that opens.`, async () => {
+    useCircle(await loginWithEmail(cfg.chainId, email))
+    await refresh()
+  })
+}
+
+// By Google: the page leaves for Google and comes back; restoreSession() finishes it.
+const signInWithGoogle = () => signingIn("Taking you to Google…", () => loginWithGoogle(cfg.chainId))
+
+// Which ways to sign in this network offers. Email and Google need the server's Circle
+// key to cover the network; without them the card is MetaMask only, as before.
+async function showSigninOptions() {
+  const { available, google } = await circleConfig(cfg.chainId)
+  $("emailForm").hidden = !available
+  $("googleBtn").hidden = !google
+  $("connect").classList.toggle("btn-blue", !available)
+  $("connect").classList.toggle("btn-ghost", !!available)
+}
+
+// The "Pick a username" form on the sign-in card.
+async function claimAtSignin(ev) {
+  ev.preventDefault()
+  const wanted = $("newUsername").value.trim().toLowerCase()
+  if (!USERNAME_RE.test(wanted)) return setStatus("claimStatus", `A username is ${USERNAME_RULES}.`, "err")
+  $("claimBtn").disabled = true
+  setStatus("claimStatus", say("Sign the username in MetaMask…", "Confirm it in the window that opens…"), "hint")
+  try {
+    const saved = await claimUsername(eth, account, wanted)
+    rememberUsername(saved.username)
+    leaveSignin()
+  } catch (e) {
+    setStatus("claimStatus", e.code === 4001 ? "Signature cancelled." : errMsg(e), "err")
+  } finally {
+    $("claimBtn").disabled = false
+  }
+}
+
+// A site can't disconnect a wallet; signing out forgets the account here and stops the
+// page from picking it up again until the next sign-in.
+function signOut() {
+  localStorage.setItem(SIGNED_OUT, "1")
+  forgetSession()
+  if (eth?.isCircle) eth = undefined
+  useAccount(undefined)
+  refresh()
+}
+
+// If this site is already connected in the wallet (and the visitor didn't sign out), pick
+// the account up without a prompt. eth_accounts never opens MetaMask.
+async function restoreSession() {
+  if (!(await whenChainReady)) return
+  // Back from Google with a sign-in to finish?
+  try {
+    const fresh = await finishGoogleLogin(cfg.chainId)
+    if (fresh) {
+      useCircle(fresh)
+      refresh()
+      location.hash = "#signin" // the card goes on to the username check, then closes
+      return
+    }
+  } catch (e) {
+    log(errMsg(e))
+    location.hash = "#signin"
+    setStatus("signinStatus", e.code === 4001 ? "Sign-in cancelled." : errMsg(e), "err")
+    return
+  }
+  if (account || localStorage.getItem(SIGNED_OUT)) return
+  const saved = savedSession(cfg.chainId)
+  if (saved) {
+    useCircle(saved)
+    refresh()
+    return
+  }
+  pickWallet()
+  if (!eth) return
+  const [acc] = await eth.request({ method: "eth_accounts" }).catch(() => [])
+  if (!acc) return
+  useAccount(acc)
+  refresh()
 }
 
 // MetaMask grants accounts per site (and per network in newer versions). Check that
@@ -394,15 +598,22 @@ const errMsg = (e) => e?.error?.message ?? e?.info?.error?.message ?? e?.shortMe
 function renderRegister() {
   const btn = $("registerBtn")
   btn.disabled = true
-  if (!account) return setStatus("regStatus", "Connect MetaMask to register.", "hint")
+  if (!account) {
+    $("regStatus").innerHTML = '<p class="hint">Registering needs the account the organiser added as a voter. <a href="#signin">Sign in</a></p>'
+    return
+  }
   if (state.phase !== "registration") return setStatus("regStatus", `Registration is closed (phase: ${state.phase}).`, "hint")
   if (state.walletErr) return setStatus("regStatus", `Could not check this wallet over the private channel: ${state.walletErr}`, "err")
-  if (!state.whitelisted) return setStatus("regStatus", `${account} is not on this election's whitelist.`, "err")
+  if (!state.whitelisted) {
+    return setStatus("regStatus", say(`${account} is not on this election's whitelist.`, `You're not on this election's voter list. Ask the organiser to add ${username ? `your username, ${username}` : "you"}.`), "err")
+  }
   if (state.registered) {
     const local = loadIdentities().some((x) => x.label === account.toLowerCase())
     return setStatus(
       "regStatus",
-      local ? "✓ Registered. Your identity is stored in this browser." : "This wallet is registered, but its identity is not in this browser. Import the secret to vote.",
+      local
+        ? say("✓ Registered. Your identity is stored in this browser.", "✓ Registered. Come back to this browser to vote once voting opens.")
+        : say("This wallet is registered, but its identity is not in this browser. Import the secret to vote.", "You registered from another browser. Vote from that one, or import your voting key here."),
       local ? "ok" : "err"
     )
   }
@@ -410,9 +621,11 @@ function renderRegister() {
   btn.disabled = false
 }
 
-const REG_STEPS = ["Sign the registration in your wallet", "Send it privately to the relayers", "A relayer puts it on-chain"]
+const regSteps = () =>
+  say(["Sign the registration in your wallet", "Send it privately to the relayers", "A relayer puts it on-chain"], ["Confirm your registration", "Send it privately", "Added to the voter list"])
 async function register() {
   $("registerBtn").disabled = true
+  const REG_STEPS = regSteps()
   let at = 0
   const progress = (i) => showSteps("regSteps", REG_STEPS, (at = i))
   progress(0)
@@ -454,7 +667,7 @@ async function register() {
       : { wallet: account, identityCommitment: identity.commitment, electionChainId: cfg.chainId, election: cfg.election }
     // Ask MetaMask directly (not via ethers' signer) so its own error message reaches the page.
     const payload = ethers.TypedDataEncoder.getPayload(domain, types, value)
-    setStatus("regStatus", "Sign the registration in MetaMask…", "muted")
+    setStatus("regStatus", say("Sign the registration in MetaMask…", "Confirm it in the window that opens…"), "muted")
     step = "sign (eth_signTypedData_v4)"
     const sign = () => eth.request({ method: "eth_signTypedData_v4", params: [account.toLowerCase(), JSON.stringify(payload)] })
     let signature
@@ -530,7 +743,7 @@ function renderIdentities() {
   const prev = sel.value
   const ids = loadIdentities()
   sel.innerHTML = ids.length
-    ? ids.map((x) => `<option value="${esc(x.label)}">${esc(x.label.startsWith("0x") ? "registered by " + x.label.slice(0, 10) + "…" : x.label)}</option>`).join("")
+    ? ids.map((x) => `<option value="${esc(x.label)}">${esc(plain() && x.label === account.toLowerCase() ? "Your voting key" : x.label.startsWith("0x") ? "registered by " + x.label.slice(0, 10) + "…" : x.label)}</option>`).join("")
     : `<option value="">(no identity in this browser)</option>`
   if (ids.some((x) => x.label === prev)) sel.value = prev
 }
@@ -650,53 +863,28 @@ let username // of the connected wallet, if it has one
 
 function renderAccount() {
   const shortAcc = account && `${account.slice(0, 6)}…${account.slice(-4)}`
-  $("account").textContent = !account ? "" : username ? `${username} · ${shortAcc}` : shortAcc
+  $("account").textContent = !account ? "" : plain() ? (username ?? circleLabel ?? "Signed in") : username ? `${username} · ${shortAcc}` : shortAcc
   $("account").title = account ?? ""
-  $("connect").hidden = !!account
-  $("accountCard").hidden = !account
+  $("signinLink").hidden = !!account
+  $("signout").hidden = !account
 }
 
-// The username lookup sends the wallet address to goblett's server over a direct
-// connection, tying it to this IP, so it only runs when the voter asks (R4-3).
+// Usernames this browser has already learned, so a reload doesn't ask the server again.
+const nameKey = (acc) => `goblett:username:${acc.toLowerCase()}`
+function rememberUsername(name) {
+  username = name || undefined
+  if (account) {
+    if (username) localStorage.setItem(nameKey(account), username)
+    else localStorage.removeItem(nameKey(account))
+  }
+  renderAccount()
+}
+
+// A new (or no) wallet: show what this browser already knows about it. Asking the server
+// is left to sign-in (R4-3).
 function resetAccount() {
-  username = undefined
+  username = (account && localStorage.getItem(nameKey(account))) || undefined
   renderAccount()
-  if (account) setStatus("accountStatus", "Looking up your username sends this wallet's address to goblett's server.", "muted")
-}
-
-async function loadAccount() {
-  username = undefined
-  renderAccount()
-  if (!account) return
-  const wallet = account
-  try {
-    const name = (await usernamesOf([wallet])).get(wallet.toLowerCase())
-    if (wallet !== account) return // the wallet changed while we were asking
-    username = name
-    $("usernameInput").value = name ?? ""
-    setStatus("accountStatus", name ? `Your username is ${name}.` : "This wallet has no username yet.", name ? "ok" : "muted")
-  } catch (e) {
-    setStatus("accountStatus", `Accounts are unavailable right now: ${errMsg(e)}`, "muted")
-  }
-  renderAccount()
-}
-
-async function saveUsername() {
-  const wanted = $("usernameInput").value.trim().toLowerCase()
-  $("usernameBtn").disabled = true
-  try {
-    if (!account) throw new Error("connect MetaMask first")
-    if (!USERNAME_RE.test(wanted)) throw new Error(`a username is ${USERNAME_RULES}`)
-    setStatus("accountStatus", "Sign the username in MetaMask…", "muted")
-    const saved = await claimUsername(eth, account, wanted)
-    username = saved.username
-    setStatus("accountStatus", `✓ Your username is ${saved.username}.`, "ok")
-    renderAccount()
-  } catch (e) {
-    setStatus("accountStatus", `Could not save the username: ${errMsg(e)}`, "err")
-  } finally {
-    $("usernameBtn").disabled = false
-  }
 }
 
 // Whitelist entries are addresses or usernames (an optional leading @ is ignored).
@@ -735,10 +923,78 @@ function previewWhitelist() {
 }
 
 // ---------------------------------------------------------------------------
+// Lobby: the elections that whitelist the signed-in wallet, or that it started, from
+// goblett's server (elections.js). Asking sends the wallet's address there, as signing in
+// does, so it happens only on the lobby and never while an election is open.
+// ---------------------------------------------------------------------------
+const electionUrl = (e) => `/app.html?election=${e.address}${NETWORK ? "&network=" + NETWORK : ""}`
+let lobbyShown = false // set once init() knows no election is being opened
+let lobbyLoad = 0
+
+function showLobby() {
+  lobbyShown = true
+  return loadLobby()
+}
+
+const listMessage = (html, cls = "muted") => {
+  $("listMsg").className = cls
+  $("listMsg").innerHTML = html
+}
+
+async function loadLobby() {
+  if (!lobbyShown) return
+  const load = ++lobbyLoad
+  $("myElections").innerHTML = ""
+  if (!account) return listMessage('Elections you can vote in show up here. <a href="#signin">Sign in</a> with the wallet you were whitelisted with.')
+  listMessage("Looking up your elections…")
+  const wallet = account
+  try {
+    await listPending()
+    const found = await electionsFor(cfg.chainId, wallet)
+    if (load !== lobbyLoad) return // the wallet changed while we were asking
+    if (!found.length) return listMessage(`No current election lists ${say(`${esc(wallet.slice(0, 6))}…${esc(wallet.slice(-4))}`, "you")} as a voter.`)
+    listMessage("")
+    const now = Date.now() / 1000
+    const day = (s) => new Date(s * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    const when = (e) =>
+      now < e.registrationEnd ? `Registration open until ${day(e.registrationEnd)}`
+      : now < e.votingStart ? `Voting opens ${day(e.votingStart)}`
+      : now < e.votingEnd ? `Voting open until ${day(e.votingEnd)}`
+      : `Ended ${day(e.votingEnd)}`
+    // Open elections first (soonest deadline first), then ended ones.
+    const ended = (e) => now >= e.votingEnd
+    $("myElections").innerHTML = [...found.filter((e) => !ended(e)), ...found.filter(ended).reverse()]
+      .map((e) => `<a href="${esc(electionUrl(e))}"${ended(e) ? ' class="ended"' : ""}>
+        <span class="t">${esc(e.title)}</span>
+        <span class="m">${esc(when(e))} · ${e.kind === "ranked" ? "Ranked choice" : "First past the post"}${e.whitelisted ? "" : " · you started it, but aren't a voter"}</span>
+      </a>`)
+      .join("")
+  } catch (e) {
+    if (load === lobbyLoad) listMessage(`Couldn't load your elections: ${esc(errMsg(e))}`, "err")
+  }
+}
+
+// Elections deployed from this browser that the server hasn't listed yet (it was
+// unreachable, or its chain node hadn't seen the new contract). Retried from the lobby.
+const pendingKey = () => `goblett:unlisted:${cfg.chainId}`
+async function listPending() {
+  const left = []
+  for (const p of JSON.parse(localStorage.getItem(pendingKey()) ?? "[]")) {
+    try {
+      await listElection(cfg.chainId, p.address, p.voters)
+    } catch (e) {
+      left.push(p)
+      log(`could not list ${p.address} for its voters yet: ${errMsg(e)}`)
+    }
+  }
+  if (left.length) localStorage.setItem(pendingKey(), JSON.stringify(left))
+  else localStorage.removeItem(pendingKey())
+  return left
+}
+
+// ---------------------------------------------------------------------------
 // Create an election (deployed from the connected wallet, which pays the gas)
 // ---------------------------------------------------------------------------
-const recentKey = () => `goblett:elections:${cfg.chainId}`
-const electionUrl = (e) => `/app.html?election=${e.address}${NETWORK ? "&network=" + NETWORK : ""}`
 const lines = (id) => $(id).value.split("\n").map((x) => x.trim()).filter(Boolean)
 // <input type="datetime-local"> works in local time without a zone: "2026-11-16T21:05".
 const toLocalInput = (unix) => {
@@ -751,10 +1007,6 @@ const fromLocalInput = (v) => Math.floor(new Date(v).getTime() / 1000)
 const chainNow = async () => Math.max(...(await Promise.all([provider.getBlock("pending").catch(() => null), provider.getBlock("latest")])).map((b) => b?.timestamp ?? 0))
 
 async function initCreateForm() {
-  const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]")
-  $("recent").innerHTML = recent
-    .map((e) => `<a href="${esc(electionUrl(e))}">${esc(e.title)}<span>${esc(e.address.slice(0, 6))}…${esc(e.address.slice(-4))} →</span></a>`)
-    .join("")
   const now = await chainNow()
   $("newRegEnd").value = toLocalInput(now + 15 * 60)
   $("newVoteEnd").value = toLocalInput(now + 45 * 60)
@@ -793,7 +1045,7 @@ function updateFundingEstimate(price) {
 // After voting ends, anyone can send the unused relayer funding back to the creator.
 async function reclaim() {
   try {
-    if (!account) await connect()
+    requireAccount()
     await ensureChain()
     await ensureAccountAuthorized()
     const signer = await new ethers.BrowserProvider(eth).getSigner(account)
@@ -819,9 +1071,8 @@ async function createElection() {
     if (cands.length < 2 || cands.length > maxCands) throw new Error(`need 2 to ${maxCands} candidates (one per line)`)
     if (new Set(cands).size !== cands.length) throw new Error("candidate names must be distinct")
 
-    step = "connect wallet"
-    if (!account) await connect()
-    if (!account) throw new Error("connect MetaMask first")
+    step = "sign in"
+    requireAccount()
     step = "look up usernames"
     const entered = lines("newWhitelist")
     const { addresses: whitelist, resolved } = await resolveWhitelist(entered.length ? entered : [account])
@@ -844,11 +1095,16 @@ async function createElection() {
     await ensureAccountAuthorized()
     const balance = await provider.getBalance(account)
     if (balance <= funding) {
-      throw new Error(`${account} has ${fmt(balance)}, not enough for ${fmt(funding)} of relayer funding plus the deployment gas.${cfg.chainId === 31337 ? ` On the local test chain run: python setup_chain.py --fund ${account}` : ""}`)
+      throw new Error(
+        say(`${account} has ${fmt(balance)}, not enough`, `Your balance is ${fmt(balance)}, not enough`) +
+          ` for ${fmt(funding)} of relayer funding plus the deployment gas.` +
+          say("", ` Add ${sym()} on ${cfg.chainName ?? "this network"} to your account's address, ${account}.`) +
+          (cfg.chainId === 31337 ? ` On the local test chain run: python setup_chain.py --fund ${account}` : "")
+      )
     }
 
-    step = "confirm the deployment in MetaMask"
-    setStatus("createStatus", "Confirm the deployment in MetaMask…", "muted")
+    step = "confirm the deployment"
+    setStatus("createStatus", say("Confirm the deployment in MetaMask…", "Confirm it in the window that opens…"), "muted")
     const signer = await new ethers.BrowserProvider(eth).getSigner(account)
     const factory = new ethers.ContractFactory(CONTRACTS[kind].abi, CONTRACTS[kind].bytecode, signer)
     // Voting opens when registration ends (votingStart = registrationEnd, no gap).
@@ -861,10 +1117,13 @@ async function createElection() {
     const rcpt = await provider.waitForTransaction(tx.hash, 1, 120000)
     if (!rcpt || rcpt.status !== 1) throw new Error("the deployment transaction failed")
 
-    const entry = { address: rcpt.contractAddress, title }
-    const recent = JSON.parse(localStorage.getItem(recentKey()) ?? "[]")
-    localStorage.setItem(recentKey(), JSON.stringify([entry, ...recent].slice(0, 20)))
-    setStatus("createStatus", `✓ Deployed at ${entry.address}. Opening it…`, "ok")
+    // Tell goblett's server, so the election shows up for its voters when they sign in.
+    // Saved first: if this fails, the lobby retries it later (listPending).
+    step = "list the election for its voters"
+    const entry = { address: rcpt.contractAddress, voters: whitelist }
+    localStorage.setItem(pendingKey(), JSON.stringify([...JSON.parse(localStorage.getItem(pendingKey()) ?? "[]"), entry]))
+    setStatus("createStatus", `✓ Deployed at ${entry.address}. Adding it to your voters' election lists…`, "ok")
+    await listPending()
     location.href = electionUrl(entry)
   } catch (e) {
     console.error(e)
@@ -906,17 +1165,22 @@ async function renderResults() {
 // ---------------------------------------------------------------------------
 const short = (x) => String(x).slice(0, 10) + "…"
 
-$("connect").onclick = () =>
-  connect().catch((e) => {
-    log(errMsg(e))
-    $("account").textContent = e.code === 4001 ? "Connection cancelled" : errMsg(e)
-  })
+$("connect").onclick = signIn
+$("emailForm").addEventListener("submit", signInWithEmail)
+$("googleBtn").onclick = signInWithGoogle
+$("signinName").addEventListener("submit", claimAtSignin)
+$("skipUsername").onclick = leaveSignin
+// Opening the sign-in view while already signed in goes straight to the username check.
+window.addEventListener("hashchange", () => {
+  if (location.hash !== "#signin") return
+  if (account) afterConnect().catch((e) => log(errMsg(e)))
+  else if (cfg) showSigninOptions() // again, in case the first lookup failed
+})
+$("signout").onclick = signOut
 $("registerBtn").onclick = register
 $("voteBtn").onclick = vote
 $("refresh").onclick = refresh
 $("createBtn").onclick = createElection
-$("usernameBtn").onclick = saveUsername
-$("lookupBtn").onclick = loadAccount
 $("newWhitelist").addEventListener("input", previewWhitelist)
 $("reclaimBtn").onclick = reclaim
 $("identitySel").onchange = () => {
@@ -940,3 +1204,5 @@ $("importBtn").onclick = () => {
 }
 
 init().catch((e) => log(e.message))
+// Wallet extensions announce themselves just after load; give them a moment.
+setTimeout(() => restoreSession().catch(() => {}), 300)

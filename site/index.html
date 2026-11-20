@@ -18,9 +18,6 @@
         }
       })()
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
@@ -34,7 +31,7 @@
             <a href="#how">How it works</a>
             <a href="#limits">Limits</a>
             <a href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
-            <a class="btn btn-ghost btn-sm" href="/app.html">Open the app</a>
+            <a class="btn btn-ghost btn-sm" href="/app.html#signin">Sign in</a>
           </nav>
         </div>
       </header>
@@ -44,7 +41,7 @@
           <p class="hero-sub">For clubs, student governments and DAOs. Voters register once with a wallet, then vote from the browser with a zero-knowledge proof. Voters pay no gas.</p>
           <div class="actions">
             <a class="btn btn-lg" href="/app.html#new">Start an election</a>
-            <a class="link-arrow" href="/app.html">Open an election link</a>
+            <a class="link-arrow" href="/app.html">See your elections</a>
           </div>
         </div>
       </div>
@@ -149,7 +146,7 @@
         <div class="wrap split" style="align-items: center">
           <div class="main" style="flex: 1 1 440px; gap: 20px">
             <h2 id="relay" class="h2">Relayers earn a bounty per vote</h2>
-            <p class="muted" style="margin: 0; font-size: 17px">A relayer listens on Nostr, checks each proof and submits it. The election refunds its gas plus the bounty. Changing a ballot breaks its proof, so no relayer has to be trusted.</p>
+            <p class="muted" style="margin: 0">A relayer listens on Nostr, checks each proof and submits it. The election refunds its gas plus the bounty. Changing a ballot breaks its proof, so no relayer has to be trusted.</p>
             <div><a class="link-arrow" href="https://github.com/Niccolo-Bal/goblett/tree/main/relayer" rel="noopener">Read the relayer guide</a></div>
           </div>
           <pre class="terminal" style="flex: 1 1 440px; min-width: 0"><span class="p">$</span> cd relayer
@@ -168,7 +165,7 @@
         </div>
         <footer class="footer">
           <div class="wrap">
-            <span class="brand" style="font-size: 22px"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett</span>
+            <span class="brand"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett</span>
             <nav aria-label="Footer">
               <a href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
               <a href="/app.html">Elections</a>

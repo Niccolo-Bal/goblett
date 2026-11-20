@@ -7,9 +7,6 @@
     <meta name="description" content="Register, vote anonymously and read the count of a Goblett election on Arc." />
     <link rel="icon" type="image/png" href="/goblett_logo.png" />
     <meta name="theme-color" content="#060708" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body class="app" data-view="election">
@@ -19,39 +16,74 @@
         <nav class="nav" aria-label="Main">
           <a href="/app.html" data-nav="lobby">Elections</a>
           <a href="/app.html#new" data-nav="new">Start an election</a>
+          <a href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
           <span class="wallet" id="wallet">
             <span id="account"></span>
-            <button id="connect" class="btn-ghost btn-sm">Connect wallet</button>
+            <a id="signinLink" class="btn btn-ghost btn-sm" href="#signin">Sign in</a>
+            <button id="signout" class="btn-ghost btn-sm" hidden>Sign out</button>
           </span>
         </nav>
       </div>
     </header>
 
     <main class="wrap app-main">
-      <!-- No election in the URL: pick or open one -->
+      <!-- Sign in: by email or Google (a Circle wallet is made behind the scenes), or with a
+           wallet extension. Only registering and creating need it. -->
+      <section id="signinCard" class="signin" aria-labelledby="signin-h" hidden>
+        <div class="panel signin-panel">
+          <img class="mark" src="/goblett_logo.png" alt="" width="34" height="72" />
+
+          <!-- Step 1: say who you are -->
+          <div id="signinConnect" class="signin-step">
+            <h1 id="signin-h">Sign in</h1>
+            <p class="lead">To register for an election or start one. It's free, and there's no password.</p>
+            <!-- Shown when email sign-in is set up for this network (main.js) -->
+            <form id="emailForm" class="signin-step" hidden>
+              <label class="field">Email
+                <input id="emailInput" type="email" autocomplete="email" placeholder="you@example.com" required />
+              </label>
+              <button id="emailBtn" type="submit" class="btn-blue btn-lg">Continue with email</button>
+              <button id="googleBtn" type="button" class="btn-ghost btn-lg" hidden>Continue with Google</button>
+              <p class="or">or, if you have a crypto wallet</p>
+            </form>
+            <button id="connect" class="btn-blue btn-lg">Continue with MetaMask</button>
+            <div id="signinStatus"></div>
+            <p class="faint">Signing in looks up your username and your elections on Goblett's server.<br />Already registered and only here to vote? <a href="#">You don't need to sign in.</a></p>
+          </div>
+
+          <!-- Step 2: only when the account has no username yet -->
+          <form id="signinName" class="signin-step" hidden>
+            <h1>Pick a username</h1>
+            <p class="lead">Signed in as <span id="signinWho"></span>. <span data-plain="Pick a username: it's what people starting an election use to add you as a voter.">This wallet has no username yet. People starting an election can add you by name instead of by address.</span></p>
+            <label class="field">Username <span class="help">3 to 20 characters: lowercase letters, digits and _. <span data-plain="Anyone can see it.">Public, and stored with your wallet address.</span></span>
+              <input id="newUsername" maxlength="20" autocomplete="off" spellcheck="false" placeholder="k_osei" />
+            </label>
+            <button id="claimBtn" type="submit" class="btn-blue btn-lg">Save username</button>
+            <div id="claimStatus"></div>
+            <button id="skipUsername" type="button" class="btn-ghost btn-sm">Skip for now</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- No election open: the signed-in wallet's elections -->
       <section class="lobby view-election" aria-labelledby="lobby-h">
         <div class="lobby-head">
-          <h1 id="lobby-h">Open an election, or start one.</h1>
-          <p id="lobbyMsg" class="muted" style="margin: 0">Paste the link or contract address you were sent.</p>
+          <h1 id="lobby-h">Your elections</h1>
+          <p id="lobbyMsg" class="muted"></p>
+          <p id="listMsg" class="muted"></p>
         </div>
-        <div class="lobby-grid">
-          <div class="panel">
-            <h2>Open by link</h2>
-            <p class="lead">A goblett.xyz link or a 0x… contract address.</p>
-            <form id="openForm" class="open-form">
-              <label for="openInput" class="faint" hidden>Election link or address</label>
-              <input id="openInput" placeholder="https://goblett.xyz/app.html?election=0x… or 0x…" autocomplete="off" spellcheck="false" />
-              <button type="submit">Open</button>
-            </form>
-            <div id="openStatus"></div>
-          </div>
-          <div class="panel">
-            <h2>Created from this browser</h2>
-            <p class="lead">Kept only on this device.</p>
-            <div id="recent"></div>
-          </div>
-        </div>
+        <div id="myElections" class="el-list"></div>
         <div><a class="btn btn-blue btn-lg" href="#new">Start an election</a></div>
+        <details class="manual-open">
+          <summary>Open an election by contract address</summary>
+          <p class="faint">For an election deployed straight from Goblett's contract source code rather than from this site. Those aren't listed above.</p>
+          <form id="openForm" class="open-form">
+            <label for="openInput" hidden>Election contract address</label>
+            <input id="openInput" placeholder="0x…" autocomplete="off" spellcheck="false" />
+            <button type="submit" class="secondary">Open</button>
+          </form>
+          <div id="openStatus"></div>
+        </details>
       </section>
 
       <!-- An election is loaded -->
@@ -70,15 +102,15 @@
           <div class="primary">
             <section id="register" class="panel" aria-labelledby="reg-h">
               <h2 id="reg-h">Register</h2>
-              <p class="lead">Your wallet signs a commitment to a secret kept in this browser. The signature carries no vote, needs no gas, and your wallet can stay on any network.</p>
-              <button id="registerBtn" class="btn-blue btn-lg" disabled>Sign to register</button>
+              <p class="lead" data-plain="Confirm once to join this election's voter list. It's free and records no vote. Your voting key is kept in this browser, so come back to this browser to vote.">Your wallet signs a commitment to a secret kept in this browser. The signature carries no vote, needs no gas, and your wallet can stay on any network.</p>
+              <button id="registerBtn" class="btn-blue btn-lg" data-plain="Register to vote" disabled>Sign to register</button>
               <ol id="regSteps" class="progress" hidden></ol>
               <div id="regStatus"></div>
             </section>
 
             <section id="vote" class="panel" aria-labelledby="vote-h">
               <h2 id="vote-h">Your ballot</h2>
-              <p class="lead">No wallet needed. Your browser proves you hold one registered identity without saying which.</p>
+              <p class="lead" data-plain="Your browser proves you're a registered voter without saying which one.">No wallet needed. Your browser proves you hold one registered identity without saying which.</p>
               <div id="ballot"></div>
               <div class="vote-row">
                 <label class="field">Voting identity
@@ -125,8 +157,8 @@
       <!-- Create: five steps -->
       <section id="createCard" class="view-new" aria-labelledby="new-h" hidden>
         <div class="lobby-head" style="margin-bottom: 36px">
-          <h1 id="new-h" class="h2" style="font-size: clamp(44px, 6vw, 72px)">Start an election</h1>
-          <p class="muted" style="margin: 0">You deploy it from your wallet, which pays the gas and funds the relayers. Voters pay nothing.</p>
+          <h1 id="new-h" class="h2">Start an election</h1>
+          <p class="muted" style="margin: 0" data-plain="You pay to run it from your account balance. Voters pay nothing.">You deploy it from your wallet, which pays the gas and funds the relayers. Voters pay nothing.</p>
         </div>
         <div class="wizard">
           <ol class="wizard-steps" aria-label="Steps">
@@ -153,7 +185,7 @@
 
             <fieldset data-step="2" hidden>
               <legend>Who can vote?</legend>
-              <p class="lead">Wallet addresses or Goblett usernames, one per line. Leave it empty to make it just your wallet.</p>
+              <p class="lead" data-plain="Goblett usernames, one per line. Leave it empty to make yourself the only voter.">Wallet addresses or Goblett usernames, one per line. Leave it empty to make it just your wallet.</p>
               <label class="field">Voters
                 <textarea id="newWhitelist" rows="6" placeholder="0x… or a username"></textarea>
               </label>
@@ -198,7 +230,7 @@
               <legend>Review &amp; deploy</legend>
               <dl id="review" class="review"></dl>
               <p class="warn" style="margin: 0">Everything above is fixed at deployment. Nobody, including you, can change the voters, candidates or schedule afterwards.</p>
-              <div><button id="createBtn" class="btn-blue btn-lg">Deploy with your wallet</button></div>
+              <div><button id="createBtn" class="btn-blue btn-lg" data-plain="Create the election">Deploy with your wallet</button></div>
               <div id="createStatus"></div>
             </fieldset>
 
@@ -208,17 +240,6 @@
             </div>
           </div>
         </div>
-      </section>
-
-      <section id="accountCard" class="panel view-any" aria-labelledby="acct-h" hidden>
-        <h2 id="acct-h">Your public username</h2>
-        <p class="lead">Optional. People creating elections can add you by name instead of by address. It's stored with your wallet address and plays no part in voting.</p>
-        <div class="inline">
-          <input id="usernameInput" placeholder="username" maxlength="20" autocomplete="off" spellcheck="false" aria-label="Username" />
-          <button id="usernameBtn" class="secondary">Save username</button>
-          <button id="lookupBtn" class="secondary">Look up mine</button>
-        </div>
-        <div id="accountStatus"></div>
       </section>
 
       <details class="activity">
