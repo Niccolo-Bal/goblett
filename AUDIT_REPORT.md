@@ -4,6 +4,30 @@ Branch `Grok`, reset to `main` `9653e7b9` (the version goblett.xyz serves) on 20
 
 Scope this round: `main` on Arc Testnet (chain 5042002) plus local copies. Any contract may be tested. IP linking is out of scope (no OHTTP yet) but noted for later.
 
+## Final round: live site, Circle, faucet, onramp, elections (2026-11-20, `main` `1753e846`)
+
+| ID | Finding | Severity | Status |
+|---|---|---|---|
+| R5-1 | `/api/circle` `emailToken` has no limit: anyone can make Circle email sign-in codes to any address, under our Circle app | Medium | Fixed in code; deploy needed |
+| R5-2 | Faucet checked the `latest` balance, so repeat requests before the first transfer is mined each got 2 USDC | Low | Fixed |
+| R5-3 | Faucet has no per-address limit, so many fresh wallets can drain it (testnet funds only) | Low | Limited per address by R5-1's fix; rest accepted |
+| R5-4 | Lobby sent the signed-in wallet straight to `/api/elections`, so the site's server saw IP, wallet and that wallet's elections together (Scout, confirmed by Red) | Medium | Fixed; gateway redeploy needed |
+| R5-5 | `ux.goblett.xyz` serves an old pre-Circle build and was on the relay's `ALLOWED_ORIGINS` (Scout) | Medium | Removed from the list; Niccolo should retire the host |
+| R5-6 | `/api/elections` POST needs no login and costs up to 200 RPC reads each (Scout, confirmed by Red) | Low | Capped by R5-1's limit; rest accepted |
+| R5-7 | No security headers on the site (Scout) | Low | Fixed except a script CSP, which needs testing with the Circle and onramp frames |
+| R5-8 | Circle sign-in goes through the site's server, which sees email, wallet and IP (Scout) | Design | Accepted; added to README limits |
+
+**Deploy:** the new `WRITE_LIMITER` binding in `site/wrangler.jsonc` (10 POSTs per minute per address per `/api/*` route) takes effect on the next `wrangler deploy`. `RELAY_TOKEN` (R4-5) is still unset on the live OHTTP Workers.
+
+Reviewed and fine: `circle.js` only forwards the user's own session token, and signing still needs confirmation in Circle's window. Onramp funds go only to the named address. Identity secrets stay random and local, so Circle never sees them.
+
+### Final round commits
+
+- `f82b4e8e` `worker.js` limits POSTs to each `/api/*` route to 10 per minute per address with a Cloudflare rate-limit binding (R5-1, R5-3). The faucet checks the `pending` balance (R5-2). Site tests and build pass.
+- `aba04707` logged the above but also moved the `relayer` submodule pointer by mistake; the next commit puts it back.
+- `7145412b` The lobby asks for its election list over OHTTP through a new gateway route `/elections`, so the site sees the wallet but not the IP (R5-4). Dropped `ux.goblett.xyz` from the relay origins (R5-5). Added `site/public/_headers` with HSTS, `frame-ancestors 'none'` and nosniff (R5-7). Added the Circle note to the README (R5-8). Gateway, site tests and build pass.
+
+
 ## Round 4: OHTTP and accounts (2026-11-17, `main` `98268aa5`)
 
 Niccolo's "round 3". IDs start at R4 so they don't clash with the table below. IP linking is now in scope. Testing was on testnet and local copies only, with no mainnet transactions.

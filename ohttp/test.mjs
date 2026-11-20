@@ -35,7 +35,7 @@ class FakeWebSocket extends EventTarget {
   close() {}
 }
 const rpcFetch = async (url, init) => {
-  seen.rpc.push({ url, body: JSON.parse(init.body) })
+  seen.rpc.push({ url, body: init?.body ? JSON.parse(init.body) : null })
   return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x01" }), { headers: { "Content-Type": "application/json" } })
 }
 
@@ -167,6 +167,15 @@ check(captured.length >= 1024, `and it is padded (${captured.length} bytes for a
   const other = await createOhttpClient({ relayUrl: "https://relay.test/", keyConfig }, via("198.51.100.2"))("/rpc/5042002", rpcBody)
   check(other.status === 200, "while other addresses are unaffected")
   globalThis.fetch = saved
+}
+
+// --- election list (lobby), so the site's server never sees the visitor's address ---
+{
+  const w = "0x" + "AB".repeat(20)
+  const er = await post("/elections", { chainId: 5042002, wallet: w })
+  const last = seen.rpc.at(-1).url
+  check(er.status === 200 && last === `https://goblett.xyz/api/elections?chainId=5042002&wallet=${w.toLowerCase()}`, "/elections asks the site's list for that wallet")
+  check((await post("/elections", { chainId: 5042002, wallet: "0x12" })).status === 400, "/elections refuses a bad wallet")
 }
 
 console.log(failures ? `${failures} FAILURE(S)` : "ALL PASSED")

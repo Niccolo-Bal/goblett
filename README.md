@@ -89,10 +89,14 @@ which is a huge security risk.
 
 ## Front-End Implementation
 
-Goblett is hosted live at [goblett.xyz](goblett.xyz)
+Goblett is hosted live at [goblett.xyz](https://goblett.xyz)
 
 The biggest thing that we will add after the initial UBC hackathon is Apple Pay + Debit card support for the Arc onramp. The only reason 
 it was not done now is that it requires approval which takes several days.
+
+Handles account creation with either email or Metamask wallet. Once signed in you can see the elections that you are whitelisted for. Then when you send your votes they are routed through an OHTTP relay which hides your IP. As soon as you cast your vote the tally will be visible on Arc.
+
+To start an election you create a title, who's on the ballot, a timeline, and whitelisted wallets. Then you provide funding through a USDC transfer and you're done. You'll be able to see the vote tally the whole time.
 
 Faucet [0xCc516e2aBC427fa846DC37148966e76471f3428b](https://explorer.testnet.arc.io/address/0xCc516e2aBC427fa846DC37148966e76471f3428b)
 
@@ -134,6 +138,12 @@ to closure is tight.
 The current OHTTP setup uses a relayer run by us, so we could hypothetically pair IPs with unencrypted messages.
 
 The fix for this would be to have a third party or many parties run the relayer, which would be possible to implement with more time.
+
+### Email and Google Sign-In Go Through Our Server
+
+Signing in without a wallet extension uses Circle's wallets, and those requests pass through the site's server, so we
+see the email, the wallet and the IP together. Voting identities are still random and stay in the browser, so this
+never links a voter to a vote. Use a wallet extension to avoid it.
 
 ## Grok Bot Usage (for SpaceXSI Bounty)
 
