@@ -234,6 +234,7 @@ function showSteps(id, labels, at, failed = false) {
       return `<li class="${cls}">${esc(l)}${timer}</li>`
     })
     .join("")
+  document.dispatchEvent(new CustomEvent("goblett:steps", { detail: { id, at, total: labels.length, failed } })) // animations.js
 }
 
 setInterval(() => {

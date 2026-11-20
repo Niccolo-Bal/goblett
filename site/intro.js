@@ -48,7 +48,7 @@ function showStep(i) {
   $("guideDots").innerHTML = STEPS.map((_, j) => `<li class="${j === i ? "on" : ""}"></li>`).join("")
   const last = i === STEPS.length - 1
   $("guideActions").innerHTML = last
-    ? `<button data-go="join">Join an election</button><button class="secondary" data-go="create">Start one</button><button class="link" data-go="close">Look around</button>`
+    ? `<button class="btn-blue" data-go="join">Join an election</button><button class="btn-ghost" data-go="create">Start one</button><button class="link" data-go="close">Look around</button>`
     : `<button class="link" data-go="next">Tap anywhere to continue</button>`
 }
 

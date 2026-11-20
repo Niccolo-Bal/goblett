@@ -1,0 +1,360 @@
+/* goblett · Molly's look, layered over Nico's ember styles (style.css).
+   Loaded after style.css on both pages. It doesn't restructure anything: it switches ember's
+   palette and type to white two-tone, turns the main buttons into liquid metal under frosted
+   glass, and carries the guided intro and the key/ballot animations (animations.js, intro.js). */
+:root {
+  color-scheme: light;
+  /* ember's four source colours, flipped to white; every other shade in style.css mixes from these */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --text: #161615;
+  --blue: #4c8dff;
+  --blue-ink: #ffffff;
+  /* ember's "soft blue" is for text on black; on white it needs to be deeper to read */
+  --blue-soft: #2f6fe8;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+  --head: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+  --display: 500 clamp(32px, 4.4vw, 56px) / 1.06 var(--head);
+  --title: 500 17px/1.35 var(--sans);
+  --body: 400 15px/1.5 var(--sans);
+
+  /* names this branch's animations use */
+  --paper: var(--bg);
+  --ink: var(--text);
+  --ink-2: #3d3d3a;
+  --tint: #f5f5f3;
+  --line-strong: #dcdcd8;
+  --float: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 12px 32px -18px rgba(0, 0, 0, 0.22);
+
+  /* cards: white frosted glass instead of dark */
+  --glass: rgba(255, 255, 255, 0.74);
+  --glass-line: rgba(0, 0, 0, 0.06);
+  --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  /* Liquid metal tinted with ember's blue, flowing behind a still frosted plate (the label sits on the plate). */
+  --metal:
+    radial-gradient(closest-side, #ffffff, rgba(255, 255, 255, 0)) 0 0 / 70% 160% no-repeat,
+    radial-gradient(closest-side, #1f3358, rgba(31, 51, 88, 0)) 100% 100% / 60% 150% no-repeat,
+    radial-gradient(closest-side, #4c8dff, rgba(76, 141, 255, 0)) 50% 0 / 55% 140% no-repeat,
+    radial-gradient(closest-side, #cfe1ff, rgba(207, 225, 255, 0)) 100% 0 / 65% 160% no-repeat,
+    radial-gradient(closest-side, #2f6fe8, rgba(47, 111, 232, 0)) 0 100% / 50% 130% no-repeat,
+    linear-gradient(#b9c3d6, #b9c3d6);
+  --metal-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 10px 24px -12px rgba(0, 0, 0, 0.45);
+  --plate: rgba(232, 233, 238, 0.78);
+  --plate-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.07);
+  --on-chrome: #161615;
+  --glow: #4c8dff;
+  --glow-deep: #2f6fe8;
+  --glow-pale: #a9c6ff;
+}
+body { letter-spacing: -0.014em; }
+.hero h1, .section-head h2, .h2, .statement, .close h2, .lobby-head h1, .el-head h1, .signin-panel h1, #tally .winner { letter-spacing: -0.03em; }
+
+/* ---------- ember's dark-only details, re-tuned for white ---------- */
+.flame .fade { background: linear-gradient(180deg, rgba(255, 255, 255, 0), var(--bg) 70%); }
+.grain { display: none; }
+.dots::before, body.app::after { background-image: radial-gradient(rgba(0, 0, 0, 0.07) 1px, transparent 1px); }
+.tile, .terminal, .panel, .stats, .stop .side { box-shadow: var(--glass-hi), var(--float); }
+.stats > div { box-shadow: -1px -1px 0 rgba(0, 0, 0, 0.06); }
+.tile:hover { border-color: rgba(76, 141, 255, 0.3); }
+.wizard-steps button:hover, .wizard-steps button[aria-current="step"] { background: var(--tint); }
+.link-arrow { border-bottom-color: rgba(0, 0, 0, 0.2); }
+#onrampRoot { box-shadow: var(--float); }
+.stop.is-docked.is-on .hop { color: var(--text); }
+.stop.is-on .hop { color: #2f6fe8; }
+
+/* ---------- Buttons: liquid metal for the main action, a soft white pill for the rest ---------- */
+.btn, button { border-radius: 10px; font-weight: 500; }
+button, .btn { background: var(--surface); color: var(--text); border-color: transparent; box-shadow: var(--float); }
+.btn:hover, button:hover { background: var(--surface); color: var(--text); }
+.btn-ghost, button.secondary, button.btn-ghost { background: var(--surface); color: var(--text); border-color: transparent; box-shadow: var(--float); }
+.btn-ghost:hover, button.secondary:hover, button.btn-ghost:hover { background: var(--tint); color: var(--text); border-color: transparent; }
+.wizard-steps button, .tag button { box-shadow: none; }
+
+.btn-blue, button.btn-blue, .btn:not(.btn-ghost) {
+  position: relative; isolation: isolate;
+  background: var(--metal); color: var(--on-chrome); border-color: transparent; box-shadow: var(--metal-shadow);
+  animation: metal-flow 7s ease-in-out infinite;
+}
+.btn-blue:hover, button.btn-blue:hover, .btn:not(.btn-ghost):hover { background: var(--metal); color: var(--on-chrome); }
+.btn-blue::before, .btn:not(.btn-ghost)::before {
+  content: ""; position: absolute; inset: 3px; z-index: -1; border-radius: 7.5px;
+  background: var(--plate); box-shadow: var(--plate-edge);
+  -webkit-backdrop-filter: blur(5px) saturate(1.2); backdrop-filter: blur(5px) saturate(1.2);
+}
+@media (prefers-reduced-motion: reduce) { .btn-blue, .btn:not(.btn-ghost) { animation: none; } }
+
+/* ---------- The goblet mark: chrome with a glowing blue flame (goblett_mark.svg) ---------- */
+.brand .mark { height: 30px; filter: drop-shadow(0 0 6px rgba(76, 141, 255, 0.35)); }
+
+/* ---------- Liquid-metal token, the intro, and the key/ballot animations (from this branch) ---------- */
+/* Liquid chrome: the ballot token. A slowly turning metal surface with a blue rim, glowing like ember.goblett.xyz. */
+@property --spin { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+.liquid {
+  position: relative; display: block; isolation: isolate; overflow: visible;
+  /* Sweeping metal bands from a turning light far below the token, so there's no hard centre point. */
+  background: conic-gradient(from var(--spin) at 18% 135%, #f4f4f7, #9a9aa4, #ffffff, #55555f, #e2e2e7, #b0b0b9, #f4f4f7);
+  box-shadow: inset 0 -12px 26px rgba(0, 0, 0, 0.3), inset 0 10px 20px rgba(255, 255, 255, 0.75), 0 26px 48px -26px rgba(0, 0, 0, 0.5);
+  border-radius: 48% 52% 46% 54% / 52% 46% 54% 48%;
+  animation: liquid-spin 10s linear infinite, liquid-morph 8s ease-in-out infinite, glow-breathe 4s ease-in-out infinite;
+}
+@keyframes glow-breathe {
+  0%, 100% { filter: drop-shadow(0 0 14px rgba(76, 141, 255, 0.45)) drop-shadow(0 0 36px rgba(47, 111, 232, 0.28)); }
+  50% { filter: drop-shadow(0 0 22px rgba(76, 141, 255, 0.65)) drop-shadow(0 0 60px rgba(47, 111, 232, 0.4)); }
+}
+/* A soft white highlight and a dark pool that drift around inside, like reflections on liquid. */
+.liquid::before {
+  content: ""; position: absolute; inset: 6%; border-radius: inherit;
+  background:
+    radial-gradient(38% 30% at 34% 28%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 100%),
+    radial-gradient(46% 38% at 64% 74%, rgba(14, 14, 22, 0.85), rgba(14, 14, 22, 0) 100%);
+  filter: blur(6px);
+  transform: rotate(calc(var(--spin) * -1));
+}
+.liquid::after {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 3px; z-index: -1;
+  background: conic-gradient(from calc(var(--spin) * -1.5), var(--glow-pale), var(--glow), #ffffff, var(--glow-deep), #cfe1ff, var(--glow-pale));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  filter: blur(1.5px); opacity: 0.75;
+}
+@keyframes liquid-spin { to { --spin: 360deg; } }
+@keyframes metal-flow {
+  0%, 100% { background-position: -10% 0%, 110% 100%, 50% -30%, 110% 0%, -10% 110%, 0 0; }
+  25% { background-position: 40% 100%, 60% -10%, 100% 60%, 20% 30%, 80% 20%, 0 0; }
+  50% { background-position: 110% 40%, -10% 50%, 30% 110%, 60% 120%, 40% -20%, 0 0; }
+  75% { background-position: 60% -20%, 30% 110%, -10% 30%, 100% 60%, 10% 70%, 0 0; }
+}
+@keyframes liquid-morph {
+  0%, 100% { border-radius: 48% 52% 46% 54% / 52% 46% 54% 48%; }
+  33% { border-radius: 56% 44% 52% 48% / 44% 56% 46% 54%; }
+  66% { border-radius: 44% 56% 58% 42% / 54% 48% 52% 46%; }
+}
+
+
+/* Casting a vote: the ballot is sealed into a chrome token and dropped into the box.
+   States live on #sealer[data-state]: ready → sealing → sealed → dropping → inbox → counted (or failed). */
+.sealer { margin: 18px 0 6px; }
+.seal-stage { position: relative; height: 290px; overflow: hidden; border-radius: 16px; background: var(--tint); transition: height 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s; }
+.seal-token {
+  position: absolute; left: 50%; top: 28px; z-index: 1;
+  width: min(280px, 86%); height: 84px; transform: translateX(-50%);
+  display: grid; place-content: center stretch; justify-items: center; text-align: center; gap: 6px; overflow: hidden;
+  background: var(--surface); border-radius: 14px; box-shadow: var(--float);
+  transition: width 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), border-radius 0.55s,
+    background 0.4s, box-shadow 0.4s, opacity 0.3s, transform 0.9s cubic-bezier(0.55, 0, 0.8, 0.2);
+}
+.seal-label { font-size: 13px; color: var(--muted); transition: opacity 0.3s; }
+.seal-text { font: 500 18px/1.2 var(--sans); letter-spacing: -0.02em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 14px; }
+.seal-sweep { position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--ink); opacity: 0; }
+
+.seal-box {
+  position: absolute; left: 50%; bottom: 26px; z-index: 2; transform: translateX(-50%);
+  width: min(300px, 92%); height: 112px;
+  background: var(--surface); border-radius: 8px 8px 16px 16px; box-shadow: var(--float);
+  display: grid; place-items: center; transition: box-shadow 0.4s;
+}
+.seal-slot { position: absolute; top: -4px; left: 50%; width: 62%; height: 8px; transform: translateX(-50%); background: var(--ink); border-radius: 4px; }
+.seal-box-label { font-size: 13px; color: var(--muted); transition: color 0.3s; }
+
+.seal-steps { list-style: none; padding: 0; margin: 12px 0 0; display: flex; gap: 10px; }
+.seal-steps li { flex: 1; font-size: 13px; color: var(--muted); padding-top: 8px; border-top: 2px solid var(--line); transition: color 0.3s, border-color 0.3s; }
+.seal-steps li.done { color: var(--ink-2); border-top-color: var(--line-strong); }
+.seal-steps li.current { color: var(--ink); border-top-color: var(--ink); }
+
+/* sealing: the choice turns into ciphertext, a scan line passes over it */
+.sealer[data-state="sealing"] .seal-text { font: 500 14px/1.2 var(--mono); letter-spacing: 0.02em; }
+.sealer[data-state="sealing"] .seal-sweep { opacity: 0.6; animation: seal-scan 1.4s ease-in-out infinite; }
+@keyframes seal-scan { 0% { transform: translateY(0); } 50% { transform: translateY(82px); } 100% { transform: translateY(0); } }
+
+/* sealed / dropping: the card becomes a small round liquid-metal token (the same as the home page's),
+   then it falls through the slot */
+.sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-token {
+  width: 66px; height: 60px; overflow: visible; isolation: isolate;
+  background: conic-gradient(from var(--spin) at 18% 135%, #f4f4f7, #9a9aa4, #ffffff, #55555f, #e2e2e7, #b0b0b9, #f4f4f7);
+  box-shadow: inset 0 -8px 18px rgba(0, 0, 0, 0.3), inset 0 6px 14px rgba(255, 255, 255, 0.75);
+  border-radius: 48% 52% 46% 54% / 52% 46% 54% 48%;
+  animation: liquid-spin 10s linear infinite, liquid-morph 8s ease-in-out infinite, glow-breathe 4s ease-in-out infinite;
+}
+/* its drifting highlight and dark pool */
+.sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-token::before {
+  content: ""; position: absolute; inset: 6%; border-radius: inherit;
+  background:
+    radial-gradient(38% 30% at 34% 28%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 100%),
+    radial-gradient(46% 38% at 64% 74%, rgba(14, 14, 22, 0.85), rgba(14, 14, 22, 0) 100%);
+  filter: blur(4px); transform: rotate(calc(var(--spin) * -1));
+}
+/* its blue rim */
+.sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-token::after {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 2.5px; z-index: -1;
+  background: conic-gradient(from calc(var(--spin) * -1.5), var(--glow-pale), var(--glow), #ffffff, var(--glow-deep), #cfe1ff, var(--glow-pale));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  filter: blur(1px); opacity: 0.8;
+}
+.sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-label, .sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-text, .sealer:is([data-state="sealed"], [data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-sweep { opacity: 0; height: 0; padding: 0; }
+.sealer:is([data-state="dropping"], [data-state="inbox"], [data-state="counted"]) .seal-token { transform: translateX(-50%) translateY(160px); }
+
+/* the box takes it in, then confirms */
+.sealer[data-state="dropping"] .seal-box { animation: seal-catch 0.35s 0.75s ease-out; }
+@keyframes seal-catch { 50% { transform: translateX(-50%) translateY(3px); } }
+.sealer[data-state="inbox"] .seal-box { animation: seal-wait 1.6s ease-in-out infinite; }
+@keyframes seal-wait { 50% { box-shadow: 0 0 0 1.5px var(--ink), 0 12px 32px -18px rgba(0, 0, 0, 0.22); } }
+.sealer[data-state="counted"] .seal-box-label { color: var(--ink); }
+.sealer[data-state="counted"] .seal-box-label::before { content: "✓  "; }
+.sealer[data-state="counted"] .seal-stage { height: 168px; }
+/* Once counted the token is inside the box; hide it so it can't peek out while the stage shrinks. */
+.sealer[data-state="counted"] .seal-token { opacity: 0; }
+
+/* failed: the token comes back out */
+.sealer[data-state="failed"] .seal-text { color: var(--err); font: 500 14px/1.2 var(--sans); }
+
+@media (prefers-reduced-motion: reduce) {
+  .seal-token, .seal-box, .seal-label, .seal-steps li, .seal-stage { transition: none !important; }
+  .seal-sweep, .seal-box { animation: none !important; }
+}
+.sealer.instant, .sealer.instant * { transition: none !important; animation: none !important; }
+
+/* Registering: a voter key is created in a card, then a chrome token of its public half travels into the voter list.
+   States live on #keyForge[data-state]: forging → signing → sending → recording → registered. */
+.forge { margin: 18px 0 6px; }
+.forge-stage { position: relative; height: 200px; overflow: hidden; border-radius: 16px; background: var(--tint); }
+.forge-key {
+  position: absolute; left: 4%; top: 50%; width: 46%; height: 118px; transform: translateY(-50%);
+  display: grid; align-content: center; gap: 6px; padding: 0 16px;
+  background: var(--surface); border-radius: 14px; box-shadow: var(--float);
+  transition: box-shadow 0.3s;
+}
+.forge-label, .forge-list-label { font: 400 13px/11px var(--sans); color: var(--muted); transition: color 0.3s; }
+.forge-text { font: 500 15px/1.2 var(--mono); letter-spacing: 0.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.forge-note { font-size: 13px; line-height: 1.3; color: var(--muted); }
+.forge-list {
+  position: absolute; right: 4%; top: 50%; width: 38%; transform: translateY(-50%);
+  display: grid; gap: 10px; padding: 14px;
+  background: var(--surface); border-radius: 14px; box-shadow: var(--float); transition: box-shadow 0.3s;
+}
+.forge-row { height: 8px; border-radius: 4px; background: var(--tint); }
+.forge-row.forge-new { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); transition: background 0.4s, box-shadow 0.4s; }
+/* The token. Its landing spot is the empty fourth row: list top (100px - 111px/2) + padding, label and three rows. */
+.forge-chip {
+  position: absolute; left: 27%; top: 50%; width: 44px; height: 14px; border-radius: 7px;
+  background: var(--metal); box-shadow: var(--metal-shadow); opacity: 0; transform: translate(-50%, -50%) scale(0.4);
+}
+
+.forge[data-state="forging"] .forge-key { animation: forge-glow 1.2s ease-in-out infinite; }
+@keyframes forge-glow { 50% { box-shadow: 0 0 0 1.5px var(--ink), 0 12px 32px -18px rgba(0, 0, 0, 0.22); } }
+.forge[data-state="signing"] .forge-key { box-shadow: 0 0 0 1.5px var(--ink), 0 12px 32px -18px rgba(0, 0, 0, 0.22); }
+.forge[data-state="signing"] .forge-note { color: var(--ink); }
+
+.forge[data-state="sending"] .forge-chip { animation: forge-send 1s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
+@keyframes forge-send {
+  0% { left: 27%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  25% { left: 27%; top: 50%; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { left: 77%; top: 137px; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.forge:is([data-state="recording"], [data-state="registered"]) .forge-chip { left: 77%; top: 137px; transform: translate(-50%, -50%) scale(1); }
+.forge[data-state="recording"] .forge-chip { opacity: 1; animation: forge-wait 1.4s ease-in-out infinite; }
+@keyframes forge-wait { 50% { opacity: 0.4; } }
+.forge[data-state="recording"] .forge-list { box-shadow: 0 0 0 1.5px var(--ink), 0 12px 32px -18px rgba(0, 0, 0, 0.22); }
+
+.forge[data-state="registered"] .forge-chip { opacity: 0; transition: opacity 0.3s; }
+.forge[data-state="registered"] .forge-new { background: var(--metal); box-shadow: var(--metal-shadow); animation: metal-flow 7s ease-in-out infinite; }
+.forge[data-state="registered"] .forge-list-label { color: var(--ink); }
+.forge[data-state="registered"] .forge-list-label::before { content: "✓  "; }
+
+@media (prefers-reduced-motion: reduce) {
+  .forge *, .forge *::before { animation: none !important; transition: none !important; }
+  .forge[data-state="sending"] .forge-chip { left: 77%; top: 137px; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.forge.instant, .forge.instant * { transition: none !important; animation: none !important; }
+@media (max-width: 480px) {
+  .forge-key { padding: 0 12px; }
+  .forge-text { font-size: 13px; letter-spacing: 0; }
+  .forge-note { font-size: 12px; }
+}
+
+/* ---------------------------------------------------------------------------
+   Guided intro. #intro[data-phase]: typing → ready → running → collapsing → guide. */
+body.intro-open { overflow: hidden; }
+.intro {
+  position: fixed; inset: 0; z-index: 50; background: var(--paper);
+  display: grid; place-items: center; padding: 24px 16px 72px;
+  animation: intro-in 0.4s ease-out;
+}
+@keyframes intro-in { from { opacity: 0; } }
+.intro-skip { position: absolute; right: 24px; bottom: 22px; font-size: 13px; }
+
+/* The terminal: a frosted glass card with liquid metal moving behind the text */
+.term {
+  position: relative; width: min(480px, 100%); aspect-ratio: 1 / 1; max-height: calc(100vh - 140px);
+  border-radius: 40px; overflow: hidden; isolation: isolate;
+  background: #dedee4; color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 40px 80px -40px rgba(0, 0, 0, 0.45);
+  animation: term-wobble 9s ease-in-out infinite;
+  transition: transform 0.65s cubic-bezier(0.6, 0, 0.3, 1), border-radius 0.65s, opacity 0.5s 0.15s;
+}
+@keyframes term-wobble {
+  0%, 100% { border-radius: 40px 44px 38px 46px; }
+  50% { border-radius: 46px 38px 44px 40px; }
+}
+.term-glass { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
+.term-glass::after { content: ""; position: absolute; inset: 0; background: linear-gradient(200deg, rgba(28, 28, 42, 0.78), rgba(28, 28, 42, 0.25) 45%, rgba(28, 28, 42, 0) 70%); }
+.term-blob { position: absolute; width: 75%; height: 62%; left: -4%; bottom: -8%; filter: blur(2px); animation: liquid-spin 7s linear infinite, liquid-morph 6s ease-in-out infinite, term-drift 11s ease-in-out infinite; }
+.term-blob.two { width: 55%; height: 44%; left: auto; right: -12%; bottom: auto; top: 6%; filter: blur(16px); opacity: 0.7; animation-duration: 12s, 9s, 14s; animation-direction: reverse, normal, reverse; }
+@keyframes term-drift { 50% { translate: 18% -14%; } }
+.term-body { position: relative; padding: 34px 34px 0; font: 13px/1.75 var(--mono); letter-spacing: 0; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); }
+.term-body p { margin: 0; }
+.term-dots { display: flex; gap: 6px; margin-bottom: 14px; }
+.term-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); }
+.term-dim { color: rgba(255, 255, 255, 0.7); }
+.term-cmd { color: #fff; font-weight: 600; }
+.caret { display: inline-block; width: 7px; height: 15px; margin-left: 2px; vertical-align: -2px; background: #fff; animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+.term-out { margin-top: 12px; }
+.term-out p { animation: line-in 0.3s ease-out both; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term-out b { font-weight: 600; }
+.term-out .k { display: inline-block; width: 9ch; color: rgba(255, 255, 255, 0.72); }
+@keyframes line-in { from { opacity: 0; transform: translateY(4px); } }
+.term-bar {
+  position: absolute; left: 22px; right: 22px; bottom: 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 7px 7px 14px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72); color: #8a8a85; font-size: 13px;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s;
+}
+.term-bar kbd { font: 500 12px var(--mono); color: #161615; background: rgba(0, 0, 0, 0.06); border-radius: 6px; padding: 3px 6px; }
+.term-bar button { --on-chrome: #161615; --glass: rgba(232, 233, 238, 0.78); --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.07); }
+.intro[data-phase="ready"] .term-bar { opacity: 1; transform: none; }
+.intro:not([data-phase="typing"]):not([data-phase="ready"]) .caret { display: none; }
+.intro[data-phase="collapsing"] .term { transform: scale(0.26); border-radius: 50%; opacity: 0; }
+
+/* The guide: the chrome token speaking one two-tone line at a time */
+.guide {
+  position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; text-align: center;
+  padding: 24px; cursor: pointer; animation: intro-in 0.5s ease-out;
+}
+.guide-token { width: 132px; height: 120px; margin-bottom: 26px; }
+.guide-token.bob { animation: liquid-spin 10s linear infinite, liquid-morph 8s ease-in-out infinite, glow-breathe 4s ease-in-out infinite, bob 0.7s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes bob { 0% { scale: 1; } 30% { scale: 1.08 0.93; } 60% { scale: 0.97 1.04; } 100% { scale: 1; } }
+.guide-line { max-width: 360px; min-height: 68px; margin: 0 0 18px; font-size: 15px; line-height: 1.5; }
+.guide-line .w { display: inline-block; animation: word-in 0.45s ease-out both; }
+.guide-line .lead { color: var(--ink); }
+.guide-line .rest { color: var(--muted); }
+@keyframes word-in { from { opacity: 0; filter: blur(4px); transform: translateY(3px); } }
+.guide-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; min-height: 40px; }
+.guide-actions .link { font-size: 13px; }
+.guide-dots { list-style: none; display: flex; gap: 6px; padding: 0; margin: 26px 0 0; }
+.guide-dots li { width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); transition: background 0.3s, width 0.3s; }
+.guide-dots li.on { width: 16px; border-radius: 3px; background: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid, .term, .term-blob, .guide-token.bob, .guide-line .w, .intro, .guide, .metal, .metal::before, .seal-token, .forge-new { animation: none !important; }
+  .term { transition: none; }
+}
+
+
+/* Text-only buttons in the intro, and the vote panel while its ballot is being sealed */
+.intro button.link { background: none; box-shadow: none; color: var(--muted); min-height: 0; padding: 4px 0; font-weight: 400; }
+.intro button.link:hover { color: var(--text); background: none; }
+#vote.sealing #ballot, #vote.sealing .vote-row { display: none; }

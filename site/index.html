@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Goblett · Anonymous elections on Arc</title>
     <meta name="description" content="Anonymous voting on Arc for clubs, student governments and DAOs. Voters register with a wallet and vote from the browser with a zero-knowledge proof. Voters pay no gas." />
-    <link rel="icon" type="image/png" href="/goblett_logo.png" />
-    <meta name="theme-color" content="#060708" />
+    <link rel="icon" type="image/svg+xml" href="/goblett_mark.svg" />
+    <meta name="theme-color" content="#ffffff" />
     <script>
       // Old links: /?election=0x… and /testnet opened the app at the site root.
       ;(() => {
@@ -19,14 +19,39 @@
       })()
     </script>
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/look.css" />
   </head>
   <body>
+    <!-- Guided intro: a terminal that "runs" goblett, then the liquid-metal ballot token explains it (intro.js) -->
+    <div id="intro" class="intro" hidden>
+      <div id="introTerm" class="term">
+        <div class="term-glass" aria-hidden="true"><span class="liquid term-blob"></span><span class="liquid term-blob two"></span></div>
+        <div class="term-body">
+          <div class="term-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          <p class="term-dim">voter@goblett ~ zsh</p>
+          <p class="term-dim"># a private vote, start to finish</p>
+          <p class="term-cmd"><span class="term-dim">~ $</span> <span id="termCmd"></span><span class="caret" id="termCaret"></span></p>
+          <div id="termOut" class="term-out"></div>
+        </div>
+        <div class="term-bar" id="termBar">
+          <span>Press <kbd>return ⏎</kbd> to run</span>
+          <button id="termRun" class="btn-blue btn-sm">Run ⏎</button>
+        </div>
+      </div>
+      <div id="introGuide" class="guide" hidden>
+        <span class="liquid guide-token" aria-hidden="true"></span>
+        <p id="guideLine" class="guide-line" aria-live="polite"></p>
+        <div id="guideActions" class="guide-actions"></div>
+        <ol id="guideDots" class="guide-dots" aria-hidden="true"></ol>
+      </div>
+      <button id="introSkip" class="intro-skip link">Skip intro</button>
+    </div>
     <section class="hero">
       <div class="flame" aria-hidden="true"><i class="f1"></i><i class="f2"></i><i class="f3"></i><i class="f4"></i><i class="fade"></i></div>
       <div class="grain" aria-hidden="true"></div>
       <header class="topbar">
         <div class="wrap">
-          <a class="brand" href="/"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett</a>
+          <a class="brand" href="/"><img class="mark" src="/goblett_mark.svg" alt="" width="18" height="32" />Goblett</a>
           <nav class="nav home-nav" aria-label="Main">
             <a href="#how">How it works</a>
             <a href="#limits">Limits</a>
@@ -42,6 +67,7 @@
           <div class="actions">
             <a class="btn btn-lg" href="/app.html#new">Start an election</a>
             <a class="link-arrow" href="/app.html">See your elections</a>
+            <button id="howBtn" class="btn-ghost btn-lg">Watch how it works</button>
           </div>
         </div>
       </div>
@@ -165,7 +191,7 @@
         </div>
         <footer class="footer">
           <div class="wrap">
-            <span class="brand"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett</span>
+            <span class="brand"><img class="mark" src="/goblett_mark.svg" alt="" width="18" height="32" />Goblett</span>
             <nav aria-label="Footer">
               <a href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
               <a href="/app.html">Elections</a>
@@ -177,5 +203,11 @@
       </section>
     </main>
     <script type="module" src="/home.js"></script>
+    <script type="module">
+      import { wireIntro, openIntro, introSeen } from "/intro.js"
+      wireIntro({ onJoin: () => (location.href = "/app.html"), onCreate: () => (location.href = "/app.html#new") })
+      document.getElementById("howBtn").onclick = () => openIntro()
+      if (!introSeen()) openIntro() // first visit
+    </script>
   </body>
 </html>
