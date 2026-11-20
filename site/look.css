@@ -455,3 +455,7 @@ body.home { min-height: 100svh; display: flex; flex-direction: column; }
 
 /* Election header note while the RPC is rate-limiting (main.js refresh) */
 #elMeta.busy { color: var(--blue-soft); }
+
+/* Buttons whose label wraps onto two lines: give the lines room (ember's buttons use line-height 1) */
+.btn, button { line-height: 1.25; padding-top: 6px; padding-bottom: 6px; text-align: center; }
+pre#exported:empty { display: none; }

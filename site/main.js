@@ -1346,9 +1346,27 @@ $("identitySel").onchange = () => {
   voteResultShown = false
   updateVoteButton()
 }
+// Show / hide the selected identity's secret (only while asked), with a copy button for backing it up.
 $("exportBtn").onclick = () => {
+  if ($("exported").textContent) {
+    $("exported").textContent = ""
+    $("exportBtn").textContent = "Show my voting key"
+    $("copyKeyBtn").hidden = true
+    return
+  }
   const x = loadIdentities().find((i) => i.label === $("identitySel").value)
-  $("exported").textContent = x ? x.identity.export() : "no identity selected"
+  $("exported").textContent = x ? x.identity.export() : "No voting key in this browser yet. Register first, or import one below."
+  $("exportBtn").textContent = "Hide key"
+  $("copyKeyBtn").hidden = !x
+}
+$("copyKeyBtn").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($("exported").textContent)
+    $("copyKeyBtn").textContent = "Copied ✓"
+    setTimeout(() => ($("copyKeyBtn").textContent = "Copy"), 2000)
+  } catch {
+    getSelection().selectAllChildren($("exported"))
+  }
 }
 $("importBtn").onclick = () => {
   try {
