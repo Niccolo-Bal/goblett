@@ -45,7 +45,7 @@ export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
       // Two pages: the landing page and the app (election, create, account).
-      input: { main: "index.html", app: "app.html" },
+      input: { main: "index.html", app: "app.html", why: "why.html", privacy: "privacy.html" },
     },
   },
 }))

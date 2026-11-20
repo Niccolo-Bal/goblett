@@ -174,11 +174,27 @@ async function init() {
 }
 
 // Show chain errors (node down, no contract at the address) instead of failing silently.
+// Public RPCs (Arc testnet's) rate-limit by IP, and several open tabs refreshing every
+// REFRESH_MS add up. On a rate limit, keep the page as it is, say so, and pause refreshing
+// for a while instead of replacing the title with the error and asking again at once.
+let busyUntil = 0
+const RATE_LIMITED = /rate.?limit|too many requests|\b429\b/i
 async function refresh() {
-  if (!election) return
+  if (!election || Date.now() < busyUntil) return
   try {
     await _refresh()
+    if (busyUntil) {
+      busyUntil = 0
+      $("elMeta").classList.remove("busy")
+    }
   } catch (e) {
+    if (RATE_LIMITED.test(errMsg(e))) {
+      busyUntil = Date.now() + 30000
+      $("elMeta").classList.add("busy")
+      $("elMeta").textContent = "The network is busy. Retrying in a few seconds…"
+      log(`rate-limited by the RPC; pausing refreshes for 30 s (${errMsg(e)})`)
+      return
+    }
     const code = provider && (await provider.getCode(cfg.election).catch(() => null))
     $("title").textContent =
       code === null ? `Chain RPC not reachable at ${cfg.rpcUrl}` : code === "0x" ? `No election contract at ${cfg.election}. Redeploy, then reload.` : `Error: ${errMsg(e)}`
@@ -234,6 +250,7 @@ function showSteps(id, labels, at, failed = false) {
       return `<li class="${cls}">${esc(l)}${timer}</li>`
     })
     .join("")
+  document.dispatchEvent(new CustomEvent("goblett:steps", { detail: { id, at, total: labels.length, failed } })) // animations.js
 }
 
 setInterval(() => {
@@ -1383,9 +1400,27 @@ $("identitySel").onchange = () => {
   voteResultShown = false
   updateVoteButton()
 }
+// Show / hide the selected identity's secret (only while asked), with a copy button for backing it up.
 $("exportBtn").onclick = () => {
+  if ($("exported").textContent) {
+    $("exported").textContent = ""
+    $("exportBtn").textContent = "Show my voting key"
+    $("copyKeyBtn").hidden = true
+    return
+  }
   const x = loadIdentities().find((i) => i.label === $("identitySel").value)
-  $("exported").textContent = x ? x.identity.export() : "no identity selected"
+  $("exported").textContent = x ? x.identity.export() : "No voting key in this browser yet. Register first, or import one below."
+  $("exportBtn").textContent = "Hide key"
+  $("copyKeyBtn").hidden = !x
+}
+$("copyKeyBtn").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($("exported").textContent)
+    $("copyKeyBtn").textContent = "Copied ✓"
+    setTimeout(() => ($("copyKeyBtn").textContent = "Copy"), 2000)
+  } catch {
+    getSelection().selectAllChildren($("exported"))
+  }
 }
 $("importBtn").onclick = () => {
   try {

@@ -5,15 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Goblett · Elections</title>
     <meta name="description" content="Register, vote anonymously and read the count of a Goblett election on Arc." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="128x128" href="/favicon.png" />
-    <meta name="theme-color" content="#060708" />
+    <meta name="theme-color" content="#ffffff" />
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/look.css" />
   </head>
   <body class="app" data-view="election">
     <header class="topbar">
       <div class="wrap">
         <div class="brand-row">
-          <a class="brand" href="/"><img class="mark" src="/goblett_logo.png" alt="" width="15" height="32" />Goblett</a>
+          <a class="brand" href="/"><img class="mark" src="/goblett_mark.svg" alt="" width="18" height="32" />Goblett</a>
           <!-- Which network the page is on. The same page and sign-in serve both (main.js). -->
           <span class="net-switch" role="group" aria-label="Network">
             <a id="netMain" href="/app.html">Mainnet</a>
@@ -47,7 +49,7 @@
            wallet extension. Only registering and creating need it. -->
       <section id="signinCard" class="signin" aria-labelledby="signin-h" hidden>
         <div class="panel signin-panel">
-          <img class="mark" src="/goblett_logo.png" alt="" width="34" height="72" />
+          <img class="mark" src="/goblett_mark.svg" alt="" width="40" height="72" />
 
           <!-- Step 1: say who you are -->
           <div id="signinConnect" class="signin-step">
@@ -90,17 +92,22 @@
           <p id="listMsg" class="muted"></p>
         </div>
         <div id="myElections" class="el-list"></div>
-        <div><a class="btn btn-blue btn-lg" href="#new">Start an election</a></div>
-        <details class="manual-open">
-          <summary>Open an election by contract address</summary>
-          <p class="faint">For an election deployed straight from Goblett's contract source code rather than from this site. Those aren't listed above.</p>
+        <div class="lobby-actions">
+          <a class="btn btn-blue btn-lg" href="#new">Start an election</a>
+          <button type="button" id="joinOpen" class="btn-ghost btn-lg" aria-expanded="false" aria-controls="joinBox">Join an election</button>
+        </div>
+        <!-- Join: paste the invite link (or a contract address). ui.js -->
+        <div id="joinBox" class="panel join-box" hidden>
+          <h2>Join an election</h2>
+          <p class="lead">Paste the invite link the organiser sent you.</p>
+          <button type="button" id="pasteLink" class="btn-blue btn-lg">Paste link from clipboard</button>
           <form id="openForm" class="open-form">
-            <label for="openInput" hidden>Election contract address</label>
-            <input id="openInput" placeholder="0x…" autocomplete="off" spellcheck="false" />
+            <label for="openInput" hidden>Invite link or election address</label>
+            <input id="openInput" placeholder="Invite link or 0x… address" autocomplete="off" spellcheck="false" />
             <button type="submit" class="secondary">Open</button>
           </form>
           <div id="openStatus"></div>
-        </details>
+        </div>
       </section>
 
       <!-- An election is loaded -->
@@ -110,7 +117,10 @@
             <p class="label" id="elMeta">Loading…</p>
             <h1 id="title">Loading election…</h1>
           </div>
-          <span id="phasePill" class="phase-pill"><span class="dot"></span><span id="phaseText">…</span></span>
+          <div class="el-head-side">
+            <span id="phasePill" class="phase-pill"><span class="dot"></span><span id="phaseText">…</span></span>
+            <button type="button" id="shareBtn" class="btn-ghost btn-sm">Copy invite link</button>
+          </div>
         </div>
         <div id="timeline" class="timeline" aria-label="Election phases"></div>
         <div id="stats" class="stats"></div>
@@ -121,6 +131,22 @@
               <h2 id="reg-h">Register</h2>
               <p class="lead" data-plain="Confirm once to join this election's voter list. It's free and records no vote. Your voting key is kept in this browser, so come back to this browser to vote.">Your wallet signs a commitment to a secret kept in this browser. The signature carries no vote, needs no gas, and your wallet can stay on any network.</p>
               <button id="registerBtn" class="btn-blue btn-lg" data-plain="Register to vote" disabled>Sign to register</button>
+              <!-- Registering: a voter key is made, then its public half flies into the voter list (animations.js) -->
+              <div id="keyForge" class="forge" hidden>
+                <div class="forge-stage" aria-hidden="true">
+                  <div class="forge-key">
+                    <span class="forge-label">Voter key</span>
+                    <span class="forge-text" id="forgeText"></span>
+                    <span class="forge-note" id="forgeNote"></span>
+                  </div>
+                  <span class="forge-chip"></span>
+                  <div class="forge-list">
+                    <span class="forge-list-label" id="forgeListLabel">Voter list</span>
+                    <span class="forge-row"></span><span class="forge-row"></span><span class="forge-row"></span>
+                    <span class="forge-row forge-new"></span>
+                  </div>
+                </div>
+              </div>
               <ol id="regSteps" class="progress" hidden></ol>
               <div id="regStatus"></div>
             </section>
@@ -134,6 +160,20 @@
                   <select id="identitySel"></select>
                 </label>
                 <button id="voteBtn" class="btn-blue btn-lg" disabled>Seal &amp; cast vote</button>
+              </div>
+              <!-- Voting: the ballot is sealed into a liquid-metal token and dropped into the box (animations.js) -->
+              <div id="sealer" class="sealer" hidden>
+                <div class="seal-stage" aria-hidden="true">
+                  <div class="seal-token" id="sealToken">
+                    <span class="seal-label">Your ballot</span>
+                    <span class="seal-text" id="sealText"></span>
+                    <span class="seal-sweep"></span>
+                  </div>
+                  <div class="seal-box">
+                    <span class="seal-slot"></span>
+                    <span class="seal-box-label" id="sealBoxLabel">Ballot box</span>
+                  </div>
+                </div>
               </div>
               <ol id="voteSteps" class="progress" hidden></ol>
               <div id="voteStatus"></div>
@@ -159,7 +199,7 @@
               <summary>Back up or import your voting key</summary>
               <div class="stack">
                 <p class="faint" style="margin: 0">The secret is the only way to vote. Anyone holding it can vote as you and see your vote.</p>
-                <div><button id="exportBtn" class="secondary btn-sm">Show secret for the selected identity</button></div>
+                <div class="inline"><button id="exportBtn" class="secondary btn-sm">Show my voting key</button><button id="copyKeyBtn" class="secondary btn-sm" hidden>Copy</button></div>
                 <pre id="exported"></pre>
                 <div class="inline">
                   <input id="importTxt" placeholder="Paste an exported secret" aria-label="Exported secret" autocomplete="off" spellcheck="false" />
@@ -216,8 +256,9 @@
             <fieldset data-step="3" hidden>
               <legend>When does it run?</legend>
               <div class="two">
-                <label class="field">Registration ends <span class="help">Voting opens at the same moment.</span>
+                <label class="field">Registration ends
                   <input id="newRegEnd" type="datetime-local" />
+                  <span class="help">Voting opens at the same moment.</span>
                 </label>
                 <label class="field">Voting ends
                   <input id="newVoteEnd" type="datetime-local" />
@@ -270,14 +311,14 @@
                 <div class="stack">
                   <p class="faint" style="margin: 0">Set by default so that relaying is slightly profitable: relayers get their gas back plus a bounty of about a tenth of it. Lower these and relayers may not forward your voters' registrations and votes.</p>
                   <div class="two">
-                    <label class="field">Bounty per registration or vote (<span class="sym"></span>)
+                    <label class="field"><span>Bounty per registration or vote (<span class="sym"></span>)</span>
                       <input id="newBounty" type="number" min="0" step="any" />
                     </label>
                     <label class="field">Highest gas price refunded (gwei)
                       <input id="newMaxGasPrice" type="number" min="0" step="1" />
                     </label>
                   </div>
-                  <label class="field">Funding to send now (<span class="sym"></span>)
+                  <label class="field"><span>Funding to send now (<span class="sym"></span>)</span>
                     <input id="newFunding" type="number" min="0" step="any" />
                   </label>
                   <p id="fundingHint" class="faint" style="margin: 0"></p>
@@ -309,5 +350,6 @@
     </main>
     <script type="module" src="/ui.js"></script>
     <script type="module" src="/main.js"></script>
+    <script type="module" src="/animations.js"></script>
   </body>
 </html>

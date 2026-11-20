@@ -116,16 +116,70 @@ tabs.forEach((b) => (b.onclick = () => go(Number(b.dataset.goto))))
 show(1)
 
 // ---------------------------------------------------------------------------
-// Open an election by contract address (the manual route; the lobby lists the rest)
+// Join: open an election from its invite link or contract address
 // ---------------------------------------------------------------------------
-$("openForm").addEventListener("submit", (ev) => {
-  ev.preventDefault()
-  const address = $("openInput").value.trim()
-  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
-    $("openStatus").innerHTML = `<p class="err">That isn't a 0x… contract address.</p>`
+function openElection(text) {
+  const t = text.trim()
+  const address = t.match(/0x[0-9a-fA-F]{40}/)?.[0]
+  if (!address) {
+    $("openStatus").innerHTML = `<p class="err">That doesn't look like a Goblett invite link. It should contain an address starting with 0x.</p>`
     return
   }
   const q = new URLSearchParams(location.search)
   q.set("election", address)
+  // An invite link says which network the election is on; keep it.
+  if (/[?&]network=testnet\b|\/testnet\b/.test(t)) q.set("network", "testnet")
+  else if (/^https?:\/\//.test(t)) q.delete("network")
+  $("openStatus").innerHTML = `<p class="muted">Opening the election…</p>`
   location.href = `/app.html?${q}`
+}
+$("openForm").addEventListener("submit", (ev) => {
+  ev.preventDefault()
+  openElection($("openInput").value)
 })
+$("joinOpen").onclick = () => {
+  const box = $("joinBox")
+  box.hidden = !box.hidden
+  $("joinOpen").setAttribute("aria-expanded", String(!box.hidden))
+  if (!box.hidden) box.scrollIntoView({ behavior: "smooth", block: "nearest" })
+}
+$("pasteLink").onclick = async () => {
+  try {
+    const text = await navigator.clipboard.readText()
+    $("openInput").value = text
+    openElection(text)
+  } catch {
+    $("openStatus").innerHTML = `<p class="err">Couldn't read the clipboard. Paste the link into the box below.</p>`
+    $("openInput").focus()
+  }
+}
+if (location.hash === "#join") $("joinOpen").click()
+
+// ---------------------------------------------------------------------------
+// Share: an invite link to the open election (the share sheet on phones, else the clipboard)
+// ---------------------------------------------------------------------------
+function inviteLink() {
+  const here = new URLSearchParams(location.search)
+  const q = new URLSearchParams({ election: here.get("election") ?? "" })
+  const testnet = here.get("network") === "testnet" || location.pathname.split("/")[1] === "testnet"
+  if (testnet) q.set("network", "testnet")
+  return `${location.origin}/app.html?${q}`
+}
+$("shareBtn").onclick = async () => {
+  const btn = $("shareBtn")
+  const url = inviteLink()
+  const title = $("title").textContent.trim()
+  const coarse = matchMedia("(pointer: coarse)").matches // phones and tablets
+  try {
+    if (coarse && navigator.share) {
+      await navigator.share({ title: `Vote: ${title}`, text: `You're invited to vote in "${title}" on Goblett.`, url })
+      return
+    }
+    await navigator.clipboard.writeText(url)
+    btn.textContent = "Link copied ✓"
+  } catch (e) {
+    if (e?.name === "AbortError") return // closed the share sheet
+    prompt("Copy this invite link:", url)
+  }
+  setTimeout(() => (btn.textContent = "Copy invite link"), 2000)
+}
