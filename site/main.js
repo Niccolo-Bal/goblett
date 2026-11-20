@@ -1042,11 +1042,27 @@ async function initCreateForm() {
   $("newVoteEnd").value = toLocalInput(now + 45 * 60)
   // Relayer payment defaults: refund gas up to twice today's price.
   const price = await gasPriceNow()
-  $("newMaxGasPrice").value = Math.ceil(Number(ethers.formatUnits(2n * price, "gwei")))
+  // A value typed under Advanced stays; everything else follows the voter list and prices.
+  for (const id of ["newBounty", "newMaxGasPrice", "newFunding"]) $(id).addEventListener("input", () => ($(id).dataset.edited = "1"))
+  $("fundingReset").onclick = () => {
+    for (const id of ["newBounty", "newMaxGasPrice", "newFunding"]) delete $(id).dataset.edited
+    updateFundingEstimate(price)
+  }
   for (const el of document.querySelectorAll(".sym")) el.textContent = sym()
-  for (const id of ["newWhitelist", "newBounty", "newMaxGasPrice"]) $(id).addEventListener("input", () => updateFundingEstimate(price))
+  for (const id of ["newWhitelist", "newBounty", "newMaxGasPrice", "newFunding"]) $(id).addEventListener("input", () => updateFundingEstimate(price))
   updateFundingEstimate(price)
-  $("chainClock").textContent = `Chain time is now ${new Date(now * 1000).toLocaleString()}. Deadlines are checked against the chain's clock, which on a local test chain can differ from yours.`
+  // The chain's clock, kept running: read once, then advanced with this device's clock.
+  // (It used to show the time the page was opened, which by the time the form was filled
+  // in was minutes old, and deadlines set from it were rejected as already past.)
+  const readAt = Date.now()
+  const showClock = () => {
+    const chain = now + (Date.now() - readAt) / 1000
+    $("chainClock").textContent = `Chain time is now ${new Date(chain * 1000).toLocaleString()}. Deadlines are checked against the chain's clock, which on a local test chain can differ from yours.`
+  }
+  showClock()
+  setInterval(() => {
+    if (!document.hidden) showClock()
+  }, 1000)
 }
 
 const sym = () => cfg.nativeCurrency?.symbol ?? ""
@@ -1057,19 +1073,40 @@ async function gasPriceNow() {
   const base = (await provider.getBlock("latest")).baseFeePerGas
   return base != null ? base + (f.maxPriorityFeePerGas ?? 0n) : (f.gasPrice ?? 0n)
 }
-// Per voter: one relayed registration and one relayed vote, each with a bounty. A registration
-// costs ~260k gas plus ~32k per level of the voters' Merkle tree (it gets deeper as the list
-// grows); a vote ~450k.
+// What relayers are paid, by default. The contract refunds a relayer the gas of each
+// registration or vote it carries (at the price it paid, up to a cap) and adds a bounty.
+// The defaults make that slightly profitable whatever the election's size:
+//   - the cap is twice today's gas price, so the refund is whole unless prices double;
+//   - the bounty is a tenth of what a typical relayed action costs in gas today, with a
+//     floor so it is still worth something when gas is nearly free;
+//   - the funding covers every voter registering and voting, with a quarter spare in case
+//     gas rises. Unspent funding is the creator's to reclaim after voting ends.
+// Per voter: a registration costs ~260k gas plus ~32k per level of the voters' Merkle tree
+// (it gets deeper as the list grows); a vote ~450k.
+const RELAY_GAS = 450000n // a typical relayed action
+const MIN_BOUNTY = ethers.parseEther("0.0005")
 function updateFundingEstimate(price) {
+  const auto = (id, value) => {
+    if (!$(id).dataset.edited) $(id).value = value
+  }
+  const read = (id) => {
+    try {
+      return ethers.parseEther($(id).value || "0")
+    } catch {
+      return 0n
+    }
+  }
   const voters = Math.max(1, lines("newWhitelist").length)
-  let bounty = 0n
-  try {
-    bounty = ethers.parseEther($("newBounty").value || "0")
-  } catch {}
+  const tenth = (RELAY_GAS * price) / 10n
+  auto("newBounty", ethers.formatEther(tenth > MIN_BOUNTY ? tenth : MIN_BOUNTY))
+  auto("newMaxGasPrice", Math.ceil(Number(ethers.formatUnits(2n * price, "gwei"))))
+  const bounty = read("newBounty")
   const levels = BigInt(Math.max(1, Math.ceil(Math.log2(voters))))
-  const estimate = BigInt(voters) * ((260000n + 32000n * levels + 450000n) * price + 2n * bounty)
-  $("newFunding").value = ethers.formatEther(estimate)
-  $("fundingHint").textContent = `Estimate for ${voters} voter(s) all registering and voting at today's gas price. Unused funding can be reclaimed to your wallet after voting ends.`
+  const gasPerVoter = 260000n + 32000n * levels + 450000n
+  auto("newFunding", ethers.formatEther(BigInt(voters) * ((gasPerVoter * price * 5n) / 4n + 2n * bounty)))
+  const funding = read("newFunding")
+  $("fundingHint").textContent = `The default covers ${voters} voter(s) all registering and voting, with a quarter spare in case gas rises.`
+  $("costSummary").innerHTML = `About ${esc(fmt(funding))} <small>for ${voters} voter${voters === 1 ? "" : "s"}, sent when you create the election. Unused funding comes back to you after voting ends.</small>`
   showFunds()
 }
 
@@ -1113,6 +1150,20 @@ async function showFundingOptions() {
   $("faucetBtn").hidden = !faucet.available
   if (faucet.available) $("faucetBtn").textContent = `Get ${faucet.amount} of test funds`
   $("onrampBtn").hidden = !(onramp.available && !NETWORK)
+  // On mainnet, also point to Arc's own on-ramp site: Circle's widget offers a bank
+  // transfer first, and most people would rather pay by card.
+  $("portalHelp").hidden = !!NETWORK
+}
+
+async function copyAddress() {
+  try {
+    await navigator.clipboard.writeText(account)
+    $("copyAddress").textContent = "Copied ✓"
+  } catch {
+    // No clipboard access (an embedded browser, say): show it to copy by hand.
+    $("copyAddress").textContent = account
+  }
+  watchForFunds()
 }
 
 async function useFaucet() {
@@ -1234,7 +1285,9 @@ async function createElection() {
     const regEnd = fromLocalInput($("newRegEnd").value)
     const voteEnd = fromLocalInput($("newVoteEnd").value)
     const now = await chainNow()
-    if (!(regEnd > now + 30)) throw new Error("registration must end in the future (by the chain's clock)")
+    if (!(regEnd > now + 30)) {
+      throw new Error(`registration must end at least a minute from now. You set ${new Date(regEnd * 1000).toLocaleTimeString()}, and the chain's clock reads ${new Date(now * 1000).toLocaleTimeString()}`)
+    }
     if (!(voteEnd > regEnd)) throw new Error("voting must end after registration ends")
 
     const bounty = ethers.parseEther($("newBounty").value || "0")
@@ -1339,6 +1392,7 @@ document.addEventListener("keydown", (e) => {
 })
 $("onrampBtn").onclick = openOnramp
 $("onrampClose").onclick = closeOnramp
+$("copyAddress").onclick = copyAddress
 $("newFunding").addEventListener("input", showFunds)
 $("newWhitelist").addEventListener("input", previewWhitelist)
 $("reclaimBtn").onclick = reclaim

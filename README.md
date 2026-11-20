@@ -90,21 +90,25 @@ which is a huge security risk.
 ## Front-End Implementation
 
 Goblett is hosted live at [goblett.xyz](https://goblett.xyz). The site is plain HTML, CSS and JavaScript built with Vite, in a white
-liquid-metal style: chrome tokens and buttons with a blue glow, over frosted-glass cards.
+liquid-metal style: chrome tokens and buttons with a blue glow, over frosted-glass cards. Users log in with MetaMask or with email; email
+sign-in creates a Circle user-controlled wallet that stays within the browser, sacrificing no security.
+
+For deploying elections, we host our own faucet [0xCc516e2aBC427fa846DC37148966e76471f3428b](https://explorer.testnet.arc.io/address/0xCc516e2aBC427fa846DC37148966e76471f3428b) for testnet elections, and have an Arc onramp for mainnet elections to make the deployment
+process more convenient.
 
 ### Pages
 
 - **Landing** (`index.html`): a short calling card around the liquid-metal ballot token. First-time visitors get a guided intro, a
   terminal that "runs" a private vote and then hands over to the token, which explains each step.
-- **Why Goblett** (`why.html`): why a secret ballot matters online, and how Goblett compares with other on-chain voting systems.
-- **Privacy** (`privacy.html`): a scroll story that follows one ballot from registration to the public count. The page stays pinned
-  while scrolling drives eight scenes, so it plays in reverse when you scroll back up. It ends with what the design does not hide.
+- **Why Goblett** (`why.html`): a scroll story that follows one ballot from registration to the public count. The page stays pinned
+  while scrolling drives eight scenes, so it plays in reverse when you scroll back up. Then why a secret ballot matters, how Goblett
+  compares with a show of hands, an online form and a typical on-chain vote, and what the design does not hide. (`privacy.html`
+  redirects here.)
 - **App** (`app.html`): sign-in, your elections, each election's page, and the create flow.
 
 ### Using the app
 
-Users sign in with MetaMask or with email. Email sign-in creates a Circle user-controlled wallet. Once signed in, you see the elections
-your wallet is whitelisted for. Registering shows a voter key being made and added to the voter list; voting shows the ballot being
+Once signed in, you see the elections your wallet is whitelisted for. Registering shows a voter key being made and added to the voter list; voting shows the ballot being
 sealed into a token and dropped into the ballot box. Ballots are routed through an OHTTP relay that hides your IP address, and the
 tally is visible on Arc as soon as a vote is counted.
 
@@ -112,14 +116,12 @@ To start an election you set a title, who's on the ballot, a timeline and the wh
 The tally is visible the whole time. Elections run on Arc Testnet or Arc Mainnet: Testnet is free but has no security guarantees, while
 Mainnet costs USDC and has security and permanence guarantees.
 
-Testnet faucet: [0xCc516e2aBC427fa846DC37148966e76471f3428b](https://explorer.testnet.arc.io/address/0xCc516e2aBC427fa846DC37148966e76471f3428b)
-
 The biggest addition planned after the hackathon is Apple Pay and debit card support for the Arc on-ramp. It isn't in yet only because
 it needs an approval that takes several days.
 
 ### Gallery
 
-Scenes from the privacy page, in the order they appear.
+Scenes from the Why Goblett page, in the order they appear.
 
 <table>
   <tr>

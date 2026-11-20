@@ -268,20 +268,11 @@
             </fieldset>
 
             <fieldset data-step="4" hidden>
-              <legend>Fund the relayers</legend>
-              <p class="lead">Relayers carry every registration and vote on-chain. They're refunded their gas plus a bounty from this funding. Unused funding can be reclaimed after voting ends.</p>
-              <div class="two">
-                <label class="field"><span>Bounty per registration or vote (<span class="sym"></span>)</span>
-                  <input id="newBounty" type="number" min="0" step="0.0001" value="0.0005" />
-                </label>
-                <label class="field">Highest gas price refunded (gwei)
-                  <input id="newMaxGasPrice" type="number" min="0" step="1" />
-                </label>
-              </div>
-              <label class="field"><span>Funding to send now (<span class="sym"></span>)</span>
-                <input id="newFunding" type="number" min="0" step="any" />
-              </label>
-              <p id="fundingHint" class="faint" style="margin: 0"></p>
+              <legend>What it costs</legend>
+              <p class="lead">Voters pay nothing. You cover the relayers, who carry every registration and vote on-chain: their costs plus a small bounty. Whatever isn't used comes back to you after voting ends.</p>
+              <!-- Worked out from the voter list and today's prices (main.js). The numbers
+                   behind it can be changed under Advanced, below the balance. -->
+              <p id="costSummary" class="cost-summary"></p>
               <!-- Your balance, and ways to top it up: a faucet on the testnet, buying USDC
                    on mainnet (main.js shows whichever this network has). -->
               <div id="fundBox" class="fund-box" hidden>
@@ -304,7 +295,36 @@
                   </div>
                   <div id="onrampRoot"></div>
                 </div>
+                <!-- Mainnet: the other way to get USDC, Arc's own on-ramp site (main.js shows it). -->
+                <div id="portalHelp" class="portal-help" hidden>
+                  <p><b>Paying by card?</b> Arc's own site, Arc Portal, sells USDC by debit card, Apple Pay or Google Pay.</p>
+                  <ol>
+                    <li><button type="button" id="copyAddress" class="btn-ghost btn-sm">Copy your account address</button></li>
+                    <li>Open <a href="https://portal.arc.io/deposit/fiat" target="_blank" rel="noopener">Arc Portal</a> and buy USDC on Arc.</li>
+                    <li>Send the USDC to the address you copied. With MetaMask, signing in to Portal with this same wallet puts it there directly.</li>
+                  </ol>
+                  <p class="faint">Come back to this tab afterwards: your balance above updates by itself.</p>
+                </div>
               </div>
+              <details class="advanced" id="fundingAdvanced">
+                <summary>Advanced: relayer payment</summary>
+                <div class="stack">
+                  <p class="faint" style="margin: 0">Set by default so that relaying is slightly profitable: relayers get their gas back plus a bounty of about a tenth of it. Lower these and relayers may not forward your voters' registrations and votes.</p>
+                  <div class="two">
+                    <label class="field"><span>Bounty per registration or vote (<span class="sym"></span>)</span>
+                      <input id="newBounty" type="number" min="0" step="any" />
+                    </label>
+                    <label class="field">Highest gas price refunded (gwei)
+                      <input id="newMaxGasPrice" type="number" min="0" step="1" />
+                    </label>
+                  </div>
+                  <label class="field"><span>Funding to send now (<span class="sym"></span>)</span>
+                    <input id="newFunding" type="number" min="0" step="any" />
+                  </label>
+                  <p id="fundingHint" class="faint" style="margin: 0"></p>
+                  <div><button type="button" id="fundingReset" class="btn-ghost btn-sm">Back to the defaults</button></div>
+                </div>
+              </details>
             </fieldset>
 
             <fieldset data-step="5" hidden>
