@@ -144,6 +144,7 @@ async function init() {
   provider = new ethers.JsonRpcProvider(cfg.rpcUrl, net, { staticNetwork: net, cacheTimeout: -1 })
   chainReady(true)
   showSigninOptions()
+  showFundingOptions()
   initCreateForm().catch((e) => log(errMsg(e)))
 
   // Which election? ?election=0x... in the URL, else the config's default (if any).
@@ -360,6 +361,7 @@ function useAccount(acc) {
   applyWording()
   resetAccount()
   loadLobby()
+  showFunds()
   if (listening !== eth && eth?.on) {
     const wallet = (listening = eth)
     wallet.on("accountsChanged", (accs) => {
@@ -1051,6 +1053,127 @@ function updateFundingEstimate(price) {
   const estimate = BigInt(voters) * ((260000n + 32000n * levels + 450000n) * price + 2n * bounty)
   $("newFunding").value = ethers.formatEther(estimate)
   $("fundingHint").textContent = `Estimate for ${voters} voter(s) all registering and voting at today's gas price. Unused funding can be reclaimed to your wallet after voting ends.`
+  showFunds()
+}
+
+// ---------------------------------------------------------------------------
+// Paying for it: the account's balance next to what the election needs, and a way to
+// top it up. On the testnet that is a faucet (functions/api/faucet.js); on mainnet,
+// buying USDC through Circle's on-ramp widget (functions/api/onramp.js).
+// ---------------------------------------------------------------------------
+// Deploying costs about 3M gas on top of the funding sent along; allow twice today's price.
+const DEPLOY_GAS = 3000000n
+let fundsShown = 0
+async function showFunds() {
+  $("fundBox").hidden = !account
+  if (!account || !provider) return
+  const shown = ++fundsShown
+  try {
+    const [balance, price] = await Promise.all([provider.getBalance(account), gasPriceNow()])
+    if (shown !== fundsShown) return
+    let funding = 0n
+    try {
+      funding = ethers.parseEther($("newFunding").value || "0")
+    } catch {}
+    const need = funding + 2n * price * DEPLOY_GAS
+    $("fundBalance").textContent = fmt(balance)
+    $("fundBalance").classList.toggle("err", balance < need)
+    $("fundNeed").textContent = balance < need ? `This election needs about ${fmt(need)}: the funding above plus the cost of creating it.` : "Enough for this election."
+  } catch {
+    if (shown === fundsShown) $("fundBalance").textContent = "couldn't read it"
+  }
+}
+
+// Which top-ups this network has. The faucet exists only on the testnet. Buying is
+// offered on mainnet only: Circle's sandbox, which is what a testnet would get, hands out
+// nothing an election here could be paid with.
+const serviceConfig = (name) =>
+  fetch(`/api/${name}?chainId=${cfg.chainId}`)
+    .then((r) => r.json())
+    .catch(() => ({ available: false }))
+async function showFundingOptions() {
+  const [faucet, onramp] = await Promise.all([serviceConfig("faucet"), serviceConfig("onramp")])
+  $("faucetBtn").hidden = !faucet.available
+  if (faucet.available) $("faucetBtn").textContent = `Get ${faucet.amount} of test funds`
+  $("onrampBtn").hidden = !(onramp.available && !NETWORK)
+}
+
+async function useFaucet() {
+  $("faucetBtn").disabled = true
+  setStatus("fundStatus", "Sending test funds…", "hint")
+  try {
+    const r = await fetch("/api/faucet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chainId: cfg.chainId, address: account }) })
+    const out = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(out.error ?? `the faucet is unavailable (HTTP ${r.status})`)
+    log(`faucet sent ${out.amount} (tx ${out.txHash})`)
+    setStatus("fundStatus", `${out.amount} is on its way…`, "hint")
+    await provider.waitForTransaction(out.txHash, 1, 60000)
+    setStatus("fundStatus", `✓ ${out.amount} added.`, "ok")
+  } catch (e) {
+    setStatus("fundStatus", `Couldn't get test funds: ${errMsg(e)}`, "err")
+  } finally {
+    $("faucetBtn").disabled = false
+    showFunds()
+  }
+}
+
+// Circle's on-ramp widget, mounted in the funding step. Loaded only when it's opened.
+let onrampWidget
+async function openOnramp() {
+  $("onrampBtn").disabled = true
+  setStatus("fundStatus", "Opening Circle's checkout…", "hint")
+  try {
+    const { createOnrampKit, parseOnrampSession } = await import("@circle-fin/onramp-kit")
+    const r = await fetch("/api/onramp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chainId: cfg.chainId, address: account }) })
+    const out = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(out.error ?? `buying funds is unavailable (HTTP ${r.status})`)
+    const { widgetBaseUrl, ...session } = out
+    closeOnramp()
+    $("onrampPanel").hidden = false
+    onrampWidget = createOnrampKit({ widgetBaseUrl }).mountIframe({
+      session: parseOnrampSession(session),
+      container: $("onrampRoot"),
+      onInitializationSuccess: () => setStatus("fundStatus", ""),
+      onInitializationError: ({ code }) => setStatus("fundStatus", `Circle's checkout didn't load (${code}).`, "err"),
+      onDepositSubmitted: () => {
+        setStatus("fundStatus", "Payment sent. Your balance updates when the funds arrive, usually within a few minutes.", "hint")
+        watchForFunds()
+      },
+      onDepositSettled: ({ payload }) => {
+        setStatus("fundStatus", `✓ ${payload?.amount ?? ""} ${payload?.tokenSymbol ?? sym()} added.`, "ok")
+        showFunds()
+      },
+      onDepositNotCompleted: ({ code }) => setStatus("fundStatus", code === "CANCELED_BY_CUSTOMER" ? "Purchase cancelled." : `The purchase didn't complete (${code}).`, "err"),
+      onSessionExpired: () => {
+        closeOnramp()
+        setStatus("fundStatus", "That checkout timed out. Open it again to continue.", "hint")
+      },
+    })
+    $("onrampPanel").scrollIntoView({ behavior: "smooth", block: "nearest" })
+  } catch (e) {
+    closeOnramp()
+    setStatus("fundStatus", `Couldn't open the checkout: ${errMsg(e)}`, "err")
+  } finally {
+    $("onrampBtn").disabled = false
+  }
+}
+
+function closeOnramp() {
+  onrampWidget?.close()
+  onrampWidget = undefined
+  $("onrampRoot").innerHTML = ""
+  $("onrampPanel").hidden = true
+}
+
+// The widget's own "settled" message is best effort, so also watch the chain for a while.
+let fundsWatch
+function watchForFunds() {
+  clearInterval(fundsWatch)
+  let checks = 0
+  fundsWatch = setInterval(() => {
+    if (++checks > 60 || !account) return clearInterval(fundsWatch)
+    showFunds()
+  }, 10000)
 }
 
 // After voting ends, anyone can send the unused relayer funding back to the creator.
@@ -1192,6 +1315,10 @@ $("registerBtn").onclick = register
 $("voteBtn").onclick = vote
 $("refresh").onclick = refresh
 $("createBtn").onclick = createElection
+$("faucetBtn").onclick = useFaucet
+$("onrampBtn").onclick = openOnramp
+$("onrampClose").onclick = closeOnramp
+$("newFunding").addEventListener("input", showFunds)
 $("newWhitelist").addEventListener("input", previewWhitelist)
 $("reclaimBtn").onclick = reclaim
 $("identitySel").onchange = () => {

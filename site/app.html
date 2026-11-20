@@ -232,6 +232,29 @@
                 <input id="newFunding" type="number" min="0" step="any" />
               </label>
               <p id="fundingHint" class="faint" style="margin: 0"></p>
+              <!-- Your balance, and ways to top it up: a faucet on the testnet, buying USDC
+                   on mainnet (main.js shows whichever this network has). -->
+              <div id="fundBox" class="fund-box" hidden>
+                <div class="fund-row">
+                  <div>
+                    <span class="label">Your balance</span>
+                    <p id="fundBalance" class="fund-balance">…</p>
+                    <p id="fundNeed" class="faint"></p>
+                  </div>
+                  <div class="inline">
+                    <button type="button" id="faucetBtn" class="secondary" hidden>Get test funds</button>
+                    <button type="button" id="onrampBtn" class="secondary" hidden>Add funds</button>
+                  </div>
+                </div>
+                <div id="fundStatus"></div>
+                <div id="onrampPanel" class="onramp-panel" hidden>
+                  <div class="fund-row">
+                    <p class="faint">Buy USDC with a card or bank transfer. Circle sends it straight to your account.</p>
+                    <button type="button" id="onrampClose" class="btn-ghost btn-sm">Close</button>
+                  </div>
+                  <div id="onrampRoot"></div>
+                </div>
+              </div>
             </fieldset>
 
             <fieldset data-step="5" hidden>

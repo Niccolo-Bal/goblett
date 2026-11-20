@@ -71,7 +71,7 @@ const isTestKey = (key) => key.startsWith("TEST_API_KEY")
 
 /// What serves `chainId`: { key, appIdVar, chains }, or null if no key here covers it.
 /// `chains` are the Circle "blockchains" the user's wallets are created on.
-function circleFor(env, chainId) {
+export function circleFor(env, chainId) {
   if (!Number.isSafeInteger(chainId) || chainId <= 0) return null
   const testnet = !MAINNETS.has(chainId)
   for (const [keyVar, appIdVar] of KEY_VARS) {

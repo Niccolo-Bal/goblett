@@ -6,8 +6,10 @@
 import { onRequest as account } from "./functions/api/account.js"
 import { onRequest as elections } from "./functions/api/elections.js"
 import { onRequest as circle } from "./functions/api/circle.js"
+import { onRequest as faucet } from "./functions/api/faucet.js"
+import { onRequest as onramp } from "./functions/api/onramp.js"
 
-const ROUTES = { "/api/account": account, "/api/elections": elections, "/api/circle": circle }
+const ROUTES = { "/api/account": account, "/api/elections": elections, "/api/circle": circle, "/api/faucet": faucet, "/api/onramp": onramp }
 
 export default {
   fetch(request, env) {

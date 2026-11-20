@@ -8,7 +8,7 @@ function pagesFunctionsDev(env) {
   return {
     name: "pages-functions-dev",
     configureServer(server) {
-      for (const name of ["account", "elections", "circle"]) serve(server, env, name)
+      for (const name of ["account", "elections", "circle", "faucet", "onramp"]) serve(server, env, name)
     },
   }
 }

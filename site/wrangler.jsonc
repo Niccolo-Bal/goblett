@@ -2,7 +2,8 @@
 // Secrets are not here. Set them once on the Worker (dashboard -> goblett -> Settings ->
 // Variables and Secrets, or `npx wrangler secret put NAME`):
 //   SUPABASE_URL, SUPABASE_SECRET_KEY   (accounts and the election list; see .env.example)
-//   CIRCLE_API_KEY, GOOGLE_CLIENT_ID    (sign-in by email or Google; optional)
+//   CIRCLE_API_KEY, CIRCLE_LIVE_API_KEY, GOOGLE_CLIENT_ID   (sign-in by email or Google, and buying funds; optional)
+//   FAUCET_PRIVATE_KEY                  (testnet faucet; optional)
 {
   "name": "goblett",
   "main": "worker.js",
