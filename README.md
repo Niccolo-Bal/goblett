@@ -94,6 +94,8 @@ Goblett is hosted live at [goblett.xyz](goblett.xyz)
 The biggest thing that we will add after the initial UBC hackathon is Apple Pay + Debit card support for the Arc onramp. The only reason 
 it was not done now is that it requires approval which takes several days.
 
+Faucet [0xCc516e2aBC427fa846DC37148966e76471f3428b](https://explorer.testnet.arc.io/address/0xCc516e2aBC427fa846DC37148966e76471f3428b)
+
 ## Limitations + Mitigants
 
 ### Cannot Change Votes
