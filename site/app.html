@@ -20,12 +20,13 @@
             <a id="netMain" href="/app.html">Mainnet</a>
             <a id="netTest" href="/app.html?network=testnet">Testnet</a>
           </span>
-          <!-- What the two networks are. Opens on hover or keyboard focus (style.css .net-help). -->
+          <!-- What the two networks are. The panel shows while the "?" is hovered or focused
+               (so a tap or the Tab key opens it too); Escape puts it away (main.js). -->
           <span class="net-help" id="netHelp">
-            <button type="button" class="net-help-btn" aria-label="What's the difference between mainnet and testnet?" aria-describedby="netHelpText">?</button>
-            <span class="net-help-panel" id="netHelpText" role="tooltip">
-              <span><b>Testnet</b> is free. It runs on test funds that are worth nothing, but it is less secure: the network can be reset, so use it to try things out.</span>
-              <span><b>Mainnet</b> costs a little real USDC to start an election. The results are permanent, so use it for a vote that counts.</span>
+            <button type="button" class="net-help-btn" aria-label="What's the difference between mainnet and testnet?" aria-describedby="netHelpPanel">?</button>
+            <span class="net-help-panel" id="netHelpPanel" role="tooltip">
+              <span><b>Testnet</b> is Circle's Arc sandbox. It is free, but has no permanence guarantees, and less security.</span>
+              <span><b>Mainnet</b> costs real USDC.</span>
             </span>
           </span>
         </div>
