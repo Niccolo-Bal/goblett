@@ -89,7 +89,8 @@ which is a huge security risk.
 
 ## Front-End Implementation
 
-Goblett is hosted live at [goblett.xyz](https://goblett.xyz)
+Goblett is hosted live at [goblett.xyz](https://goblett.xyz). Users can log in with either Metamask or email, the latter of which creates a 
+Circle user-controlled wallet. Then
 
 The biggest thing that we will add after the initial UBC hackathon is Apple Pay + Debit card support for the Arc onramp. The only reason 
 it was not done now is that it requires approval which takes several days.
@@ -161,5 +162,5 @@ of the project that were not found initially by devs or coding agents. See `AUDI
 <em>Made by Niccolo Balestriere et al. from Blockchain@Emory</em>
 <br>
 <br>
-<img src="media/bae.png" alt="logo" width="800px">
+<img src="media/bae.png" alt="logo" width="850px">
 </div>
