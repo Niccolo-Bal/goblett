@@ -159,7 +159,7 @@ calm.addEventListener("change", () => {
 frame()
 
 if (!calm.matches && "IntersectionObserver" in window) {
-  const items = document.querySelectorAll("main .section-head, main .tile, main .limits > div, main .relay .main, main .terminal, main .close h2")
+  const items = document.querySelectorAll("main .section-head, main .limits > div, main .close h2")
   const io = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
