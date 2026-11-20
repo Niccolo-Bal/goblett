@@ -8,6 +8,9 @@
   "name": "goblett",
   "main": "worker.js",
   "compatibility_date": "2026-11-16",
+  // POSTs to /api/* per address per route per minute (worker.js): stops email-code
+  // bombing through Circle, faucet draining and table spam from one address.
+  "ratelimits": [{ "name": "WRITE_LIMITER", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
