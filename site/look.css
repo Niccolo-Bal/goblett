@@ -235,10 +235,29 @@ button, .btn { background: var(--surface); color: var(--text); border-color: tra
 }
 .forge-row { height: 8px; border-radius: 4px; background: var(--tint); }
 .forge-row.forge-new { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); transition: background 0.4s, box-shadow 0.4s; }
-/* The token. Its landing spot is the empty fourth row: list top (100px - 111px/2) + padding, label and three rows. */
+/* The token: a small round liquid-metal drop, like the ballot token and the home page's, with the blue glow.
+   Its landing spot is the empty fourth row: list top (100px - 111px/2) + padding, label and three rows. */
 .forge-chip {
-  position: absolute; left: 27%; top: 50%; width: 44px; height: 14px; border-radius: 7px;
-  background: var(--metal); box-shadow: var(--metal-shadow); opacity: 0; transform: translate(-50%, -50%) scale(0.4);
+  position: absolute; z-index: 3; left: 27%; top: 50%; width: 26px; height: 24px; isolation: isolate; /* above both cards */
+  background: conic-gradient(from var(--spin) at 18% 135%, #f4f4f7, #9a9aa4, #ffffff, #55555f, #e2e2e7, #b0b0b9, #f4f4f7);
+  box-shadow: inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 3px 6px rgba(255, 255, 255, 0.75);
+  border-radius: 48% 52% 46% 54% / 52% 46% 54% 48%;
+  filter: drop-shadow(0 0 6px rgba(76, 141, 255, 0.6)) drop-shadow(0 0 14px rgba(47, 111, 232, 0.3));
+  opacity: 0; transform: translate(-50%, -50%) scale(0.4);
+}
+.forge-chip::before {
+  content: ""; position: absolute; inset: 8%; border-radius: inherit;
+  background:
+    radial-gradient(38% 30% at 34% 28%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 100%),
+    radial-gradient(46% 38% at 64% 74%, rgba(14, 14, 22, 0.8), rgba(14, 14, 22, 0) 100%);
+  filter: blur(2px);
+}
+.forge-chip::after {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; z-index: -1;
+  background: conic-gradient(from calc(var(--spin) * -1.5), var(--glow-pale), var(--glow), #ffffff, var(--glow-deep), #cfe1ff, var(--glow-pale));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: 0.85;
 }
 
 .forge[data-state="forging"] .forge-key { animation: forge-glow 1.2s ease-in-out infinite; }
@@ -246,15 +265,15 @@ button, .btn { background: var(--surface); color: var(--text); border-color: tra
 .forge[data-state="signing"] .forge-key { box-shadow: 0 0 0 1.5px var(--ink), 0 12px 32px -18px rgba(0, 0, 0, 0.22); }
 .forge[data-state="signing"] .forge-note { color: var(--ink); }
 
-.forge[data-state="sending"] .forge-chip { animation: forge-send 1s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
+.forge[data-state="sending"] .forge-chip { animation: forge-send 1s cubic-bezier(0.5, 0, 0.2, 1) forwards, liquid-spin 6s linear infinite, liquid-morph 5s ease-in-out infinite; }
 @keyframes forge-send {
   0% { left: 27%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
   25% { left: 27%; top: 50%; opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { left: 77%; top: 137px; opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 .forge:is([data-state="recording"], [data-state="registered"]) .forge-chip { left: 77%; top: 137px; transform: translate(-50%, -50%) scale(1); }
-.forge[data-state="recording"] .forge-chip { opacity: 1; animation: forge-wait 1.4s ease-in-out infinite; }
-@keyframes forge-wait { 50% { opacity: 0.4; } }
+.forge[data-state="recording"] .forge-chip { opacity: 1; animation: forge-wait 1.4s ease-in-out infinite, liquid-spin 6s linear infinite, liquid-morph 5s ease-in-out infinite; }
+@keyframes forge-wait { 50% { opacity: 0.55; } }
 .forge[data-state="recording"] .forge-list { box-shadow: 0 0 0 1.5px var(--ink), 0 12px 32px -18px rgba(0, 0, 0, 0.22); }
 
 .forge[data-state="registered"] .forge-chip { opacity: 0; transition: opacity 0.3s; }
