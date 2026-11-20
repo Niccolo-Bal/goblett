@@ -92,17 +92,22 @@
           <p id="listMsg" class="muted"></p>
         </div>
         <div id="myElections" class="el-list"></div>
-        <div><a class="btn btn-blue btn-lg" href="#new">Start an election</a></div>
-        <details class="manual-open">
-          <summary>Open an election by contract address</summary>
-          <p class="faint">For an election deployed straight from Goblett's contract source code rather than from this site. Those aren't listed above.</p>
+        <div class="lobby-actions">
+          <a class="btn btn-blue btn-lg" href="#new">Start an election</a>
+          <button type="button" id="joinOpen" class="btn-ghost btn-lg" aria-expanded="false" aria-controls="joinBox">Join an election</button>
+        </div>
+        <!-- Join: paste the invite link (or a contract address). ui.js -->
+        <div id="joinBox" class="panel join-box" hidden>
+          <h2>Join an election</h2>
+          <p class="lead">Paste the invite link the organiser sent you.</p>
+          <button type="button" id="pasteLink" class="btn-blue btn-lg">Paste link from clipboard</button>
           <form id="openForm" class="open-form">
-            <label for="openInput" hidden>Election contract address</label>
-            <input id="openInput" placeholder="0x…" autocomplete="off" spellcheck="false" />
+            <label for="openInput" hidden>Invite link or election address</label>
+            <input id="openInput" placeholder="Invite link or 0x… address" autocomplete="off" spellcheck="false" />
             <button type="submit" class="secondary">Open</button>
           </form>
           <div id="openStatus"></div>
-        </details>
+        </div>
       </section>
 
       <!-- An election is loaded -->

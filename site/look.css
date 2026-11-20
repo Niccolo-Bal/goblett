@@ -441,3 +441,10 @@ body.home { min-height: 100svh; display: flex; flex-direction: column; }
   .why-reasons { grid-template-columns: minmax(0, 1fr); }
   .why-row { grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 8px; font-size: 13px; }
 }
+
+/* Lobby: Start and Join side by side, and the join box */
+.lobby-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.join-box { max-width: 560px; display: flex; flex-direction: column; gap: 14px; }
+.join-box h2 { margin: 0; }
+.join-box .lead { margin: 0; }
+.join-box > .btn-blue { align-self: flex-start; }
