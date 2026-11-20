@@ -1317,8 +1317,9 @@ $("refresh").onclick = refresh
 $("createBtn").onclick = createElection
 $("faucetBtn").onclick = useFaucet
 // The "?" beside the network switch closes on Escape or a click outside it.
-document.addEventListener("click", (e) => { if (!$("netHelp").contains(e.target)) $("netHelp").open = false })
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("netHelp").open = false })
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("netHelp").contains(document.activeElement)) document.activeElement.blur()
+})
 $("onrampBtn").onclick = openOnramp
 $("onrampClose").onclick = closeOnramp
 $("newFunding").addEventListener("input", showFunds)
