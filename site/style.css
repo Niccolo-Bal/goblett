@@ -97,15 +97,18 @@ button:disabled { opacity: 0.38; cursor: not-allowed; transform: none; }
 .net-switch a:hover { color: var(--text); }
 .net-switch a[aria-current="true"] { color: var(--blue-soft); background: var(--blue-wash); }
 .net-help { position: relative; }
-.net-help summary { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--line-2); border-radius: 50%; font: 500 12px/1 var(--mono); color: var(--faint); cursor: pointer; list-style: none; user-select: none; }
-.net-help summary::-webkit-details-marker { display: none; }
-.net-help summary:hover, .net-help[open] summary { color: var(--blue-soft); border-color: var(--blue-line); }
-.net-help-panel { position: absolute; z-index: 10; top: calc(100% + 10px); left: 0; width: min(300px, calc(100vw - 2 * var(--gutter))); padding: 14px 16px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius); font-size: 13px; line-height: 1.5; color: var(--muted); display: grid; gap: 8px; }
-.net-help-panel p { margin: 0; }
+.net-help { display: inline-flex; }
+button.net-help-btn { display: grid; place-items: center; width: 24px; height: 24px; min-height: 0; padding: 0; background: transparent; border: 1px solid var(--line-2); border-radius: 50%; font: 500 12px/1 var(--mono); color: var(--faint); cursor: help; }
+.net-help:hover .net-help-btn, .net-help:focus-within .net-help-btn { color: var(--blue-soft); border-color: var(--blue-line); background: transparent; }
+/* Shown on hover or focus. The ::after strip bridges the gap below the "?", so moving the
+   pointer down onto the text doesn't close it. */
+.net-help-panel { visibility: hidden; opacity: 0; transition: opacity 0.12s, visibility 0.12s; position: absolute; z-index: 10; top: calc(100% + 10px); left: 0; width: min(300px, calc(100vw - 2 * var(--gutter))); padding: 14px 16px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius); font-size: 13px; line-height: 1.5; color: var(--muted); display: grid; gap: 8px; }
+.net-help:hover .net-help-panel, .net-help:focus-within .net-help-panel { visibility: visible; opacity: 1; }
+.net-help::after { content: ""; position: absolute; top: 100%; left: 0; width: 100%; height: 12px; }
 .net-help-panel b { color: var(--text); font-weight: 600; }
 @media (max-width: 720px) { .net-help { position: static; } .brand-row { position: relative; } }
 .gh-link { gap: 7px; }
-.brand .mark { height: 28px; width: auto; flex: none; }
+.brand .mark { height: 28px; width: auto; flex: none; order: 1; }
 .brand .badge { font: 500 13px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue-soft); border: 1px solid var(--blue-line); border-radius: 4px; padding: 4px 6px; }
 .nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 28px; font-size: 15px; }
 .nav a:not(.btn) { color: var(--muted); text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; }
