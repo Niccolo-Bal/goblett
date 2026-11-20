@@ -89,17 +89,68 @@ which is a huge security risk.
 
 ## Front-End Implementation
 
-Goblett is hosted live at [goblett.xyz](https://goblett.xyz). Users can log in with either Metamask or email, the latter of which creates a 
-Circle user-controlled wallet. Then
+Goblett is hosted live at [goblett.xyz](https://goblett.xyz). The site is plain HTML, CSS and JavaScript built with Vite, in a white
+liquid-metal style: chrome tokens and buttons with a blue glow, over frosted-glass cards.
 
-The biggest thing that we will add after the initial UBC hackathon is Apple Pay + Debit card support for the Arc onramp. The only reason 
-it was not done now is that it requires approval which takes several days.
+### Pages
 
-Handles account creation with either email or Metamask wallet. Once signed in you can see the elections that you are whitelisted for. Then when you send your votes they are routed through an OHTTP relay which hides your IP. As soon as you cast your vote the tally will be visible on Arc.
+- **Landing** (`index.html`): a short calling card around the liquid-metal ballot token. First-time visitors get a guided intro, a
+  terminal that "runs" a private vote and then hands over to the token, which explains each step.
+- **Why Goblett** (`why.html`): why a secret ballot matters online, and how Goblett compares with other on-chain voting systems.
+- **Privacy** (`privacy.html`): a scroll story that follows one ballot from registration to the public count. The page stays pinned
+  while scrolling drives eight scenes, so it plays in reverse when you scroll back up. It ends with what the design does not hide.
+- **App** (`app.html`): sign-in, your elections, each election's page, and the create flow.
 
-To start an election you create a title, who's on the ballot, a timeline, and whitelisted wallets. Then you provide funding through a USDC transfer and you're done. You'll be able to see the vote tally the whole time. You can start an election on Arc Testnet or on Arc Mainnet, Testnet is free but has no security guarantees, Mainnet costs USDC but has security and permanence guarantees.
+### Using the app
 
-Faucet [0xCc516e2aBC427fa846DC37148966e76471f3428b](https://explorer.testnet.arc.io/address/0xCc516e2aBC427fa846DC37148966e76471f3428b)
+Users sign in with MetaMask or with email. Email sign-in creates a Circle user-controlled wallet. Once signed in, you see the elections
+your wallet is whitelisted for. Registering shows a voter key being made and added to the voter list; voting shows the ballot being
+sealed into a token and dropped into the ballot box. Ballots are routed through an OHTTP relay that hides your IP address, and the
+tally is visible on Arc as soon as a vote is counted.
+
+To start an election you set a title, who's on the ballot, a timeline and the whitelisted wallets, then fund it with a USDC transfer.
+The tally is visible the whole time. Elections run on Arc Testnet or Arc Mainnet: Testnet is free but has no security guarantees, while
+Mainnet costs USDC and has security and permanence guarantees.
+
+Testnet faucet: [0xCc516e2aBC427fa846DC37148966e76471f3428b](https://explorer.testnet.arc.io/address/0xCc516e2aBC427fa846DC37148966e76471f3428b)
+
+The biggest addition planned after the hackathon is Apple Pay and debit card support for the Arc on-ramp. It isn't in yet only because
+it needs an approval that takes several days.
+
+### Gallery
+
+Scenes from the privacy page, in the order they appear.
+
+<table>
+  <tr>
+    <td width="50%"><img src="media/privacy/01-who-did-you-vote-for.png" alt="The opening screen: your wallet and your ballot are kept apart from start to finish"><br><sub>The opening screen: your wallet and your ballot are kept apart from start to finish</sub></td>
+    <td width="50%"><img src="media/privacy/02-wallet-and-ballot-apart.png" alt="The ballot token splits away from the wallet"><br><sub>The ballot token splits away from the wallet</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="media/privacy/03-secret-in-browser.png" alt="Registering creates a secret that never leaves the browser"><br><sub>Registering creates a secret that never leaves the browser</sub></td>
+    <td width="50%"><img src="media/privacy/04-wallet-signs-once.png" alt="One wallet signature adds a sealed copy of the secret to the voter list"><br><sub>One wallet signature adds a sealed copy of the secret to the voter list</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="media/privacy/05-voter-list-locked.png" alt="The voter list freezes before voting opens"><br><sub>The voter list freezes before voting opens</sub></td>
+    <td width="50%"><img src="media/privacy/06-proof-without-identity.png" alt="A zero-knowledge proof shows you are on the list, never which entry"><br><sub>A zero-knowledge proof shows you are on the list, never which entry</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="media/privacy/07-one-ballot-per-voter.png" alt="A one-time tag turns away a second ballot"><br><sub>A one-time tag turns away a second ballot</sub></td>
+    <td width="50%"><img src="media/privacy/08-route-ohttp-relay.png" alt="The OHTTP relay sees your IP address but can't read the ballot"><br><sub>The OHTTP relay sees your IP address but can't read the ballot</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="media/privacy/09-route-nostr-relayer.png" alt="Nostr and the relayer see the ballot and proof, never who sent it"><br><sub>Nostr and the relayer see the ballot and proof, never who sent it</sub></td>
+    <td width="50%"><img src="media/privacy/10-route-arc.png" alt="Arc records the ballot without learning which voter cast it"><br><sub>Arc records the ballot without learning which voter cast it</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="media/privacy/11-public-count.png" alt="Ballots and the count are public; the voter behind each ballot is not"><br><sub>Ballots and the count are public; the voter behind each ballot is not</sub></td>
+    <td width="50%"><img src="media/privacy/12-limits.png" alt="What the design does not hide, stated plainly"><br><sub>What the design does not hide, stated plainly</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="media/privacy/13-closing-goblet.png" alt="The closing mark: the goblet…"><br><sub>The closing mark: the goblet…</sub></td>
+    <td width="50%"><img src="media/privacy/14-closing-blob.png" alt="…melts into the liquid-metal ballot token and back"><br><sub>…melts into the liquid-metal ballot token and back</sub></td>
+  </tr>
+</table>
 
 ## Limitations + Mitigants
 
