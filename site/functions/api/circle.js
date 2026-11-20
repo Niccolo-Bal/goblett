@@ -5,7 +5,7 @@
 //   POST /api/circle { action, chainId, ... }   -> see ACTIONS below
 //
 // Circle's API needs two credentials: our API key, which lives only in this function's
-// environment (CIRCLE_API_KEY), and the user's own session token, which Circle gives the
+// environment (CIRCLE_API_KEY_TEST and CIRCLE_API_KEY_MAIN), and the user's own session token, which Circle gives the
 // browser when the user proves their email or Google account. This function adds the
 // first to requests the browser makes with the second. It is not a general proxy: only
 // the handful of calls below are possible, and none of them moves or signs anything by
@@ -60,13 +60,13 @@ async function circle(key, path, { method = "GET", userToken, body } = {}) {
 
 // Circle keeps testnets and mainnets apart: a test key (TEST_API_KEY:...) only works on
 // testnets and a live key only on mainnets, each with its own app id, users and wallets.
-// The site serves both networks, so it can hold one key of each kind. Any of these
-// variables may carry either; the key's own prefix says which kind it is.
-const KEY_VARS = [
-  ["CIRCLE_API_KEY", "CIRCLE_APP_ID"],
-  ["CIRCLE_TEST_API_KEY", "CIRCLE_TEST_APP_ID"],
-  ["CIRCLE_LIVE_API_KEY", "CIRCLE_LIVE_APP_ID"],
-]
+// The site serves both networks, so it holds one key for each: CIRCLE_API_KEY_TEST for
+// testnets and CIRCLE_API_KEY_MAIN for mainnet. A key in the wrong variable is ignored
+// (its prefix says which kind it is) rather than sent to an environment that rejects it.
+const KEY_VARS = {
+  testnet: ["CIRCLE_API_KEY_TEST", "CIRCLE_APP_ID_TEST"],
+  mainnet: ["CIRCLE_API_KEY_MAIN", "CIRCLE_APP_ID_MAIN"],
+}
 const isTestKey = (key) => key.startsWith("TEST_API_KEY")
 
 /// What serves `chainId`: { key, appIdVar, chains }, or null if no key here covers it.
@@ -74,11 +74,10 @@ const isTestKey = (key) => key.startsWith("TEST_API_KEY")
 export function circleFor(env, chainId) {
   if (!Number.isSafeInteger(chainId) || chainId <= 0) return null
   const testnet = !MAINNETS.has(chainId)
-  for (const [keyVar, appIdVar] of KEY_VARS) {
-    const key = String(env[keyVar] ?? "")
-    if (key && isTestKey(key) === testnet) return { key, appId: env[appIdVar], chains: blockchainsFor(testnet, chainId) }
-  }
-  return null
+  const [keyVar, appIdVar] = testnet ? KEY_VARS.testnet : KEY_VARS.mainnet
+  const key = String(env[keyVar] ?? "")
+  if (!key || isTestKey(key) !== testnet) return null
+  return { key, appId: env[appIdVar], chains: blockchainsFor(testnet, chainId) }
 }
 
 // A user's wallets for an election chain: the chain's own entry, where Circle knows the chain, plus

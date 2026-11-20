@@ -68,7 +68,7 @@ const runPending = () => {
 }
 
 globalThis.fetch = circle
-const env = { CIRCLE_API_KEY: "TEST_API_KEY:id:secret" }
+const env = { CIRCLE_API_KEY_TEST: "TEST_API_KEY:id:secret" }
 const server = async (method, query = "", body, e = env) => {
   const r = await onRequest({ request: new Request(`http://site.test/api/circle${query}`, { method, body: body && JSON.stringify(body) }), env: e })
   return { status: r.status, ...(await r.json()) }
@@ -80,13 +80,15 @@ let r = await server("GET", `?chainId=${TESTNET}`)
 check(r.status === 200 && r.available && r.appId === "app-1" && r.google === null, "a test key offers email sign-in on the testnet, with the app id looked up")
 r = await server("GET", `?chainId=${MAINNET}`)
 check(r.status === 200 && r.available === false, "but not on mainnet")
-r = await server("GET", `?chainId=${MAINNET}`, undefined, { CIRCLE_API_KEY: "LIVE_API_KEY:id:secret", CIRCLE_APP_ID: "app-live", GOOGLE_CLIENT_ID: "g-1" })
+r = await server("GET", `?chainId=${MAINNET}`, undefined, { CIRCLE_API_KEY_MAIN: "LIVE_API_KEY:id:secret", CIRCLE_APP_ID_MAIN: "app-live", GOOGLE_CLIENT_ID: "g-1" })
 check(r.available && r.appId === "app-live" && r.google === "g-1", "a live key offers it on mainnet, with Google when a client id is set")
 r = await server("GET", `?chainId=${TESTNET}`, undefined, {})
 check(r.status === 200 && r.available === false, "no key: not offered at all")
 
 // One site, both networks: a test key and a live key side by side.
-const both = { CIRCLE_API_KEY: "TEST_API_KEY:id:secret", CIRCLE_LIVE_API_KEY: "LIVE_API_KEY:id:secret", CIRCLE_LIVE_APP_ID: "app-live" }
+const both = { CIRCLE_API_KEY_TEST: "TEST_API_KEY:id:secret", CIRCLE_API_KEY_MAIN: "LIVE_API_KEY:id:secret", CIRCLE_APP_ID_MAIN: "app-live" }
+r = await server("GET", `?chainId=${MAINNET}`, undefined, { CIRCLE_API_KEY_MAIN: "TEST_API_KEY:id:secret" })
+check(r.available === false, "a test key put in the mainnet variable is ignored")
 r = await server("GET", `?chainId=${MAINNET}`, undefined, both)
 const onTestnet = await server("GET", `?chainId=${TESTNET}`, undefined, both)
 check(r.available && r.appId === "app-live" && onTestnet.available && onTestnet.appId === "app-1", "with a key of each kind, both networks are offered, each with its own app id")
