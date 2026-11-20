@@ -459,3 +459,24 @@ body.home { min-height: 100svh; display: flex; flex-direction: column; }
 /* Buttons whose label wraps onto two lines: give the lines room (ember's buttons use line-height 1) */
 .btn, button { line-height: 1.25; padding-top: 6px; padding-bottom: 6px; text-align: center; }
 pre#exported:empty { display: none; }
+
+/* Ballot choices: a real round radio (ember's inputs get min-height 44px, which made it an oval),
+   and ranked-choice checkboxes stay square-ish with their number badge. */
+#ballot input[type="radio"] {
+  appearance: none; -webkit-appearance: none; flex: none;
+  width: 20px; height: 20px; min-height: 0; padding: 0; margin: 0; border-radius: 50%;
+  border: 1.5px solid var(--line-strong); background: var(--surface); box-shadow: none;
+  display: grid; place-items: center; cursor: pointer; transition: border-color 0.15s;
+}
+#ballot input[type="radio"]::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--blue); transform: scale(0); transition: transform 0.15s; }
+#ballot input[type="radio"]:checked { border-color: var(--blue); }
+#ballot input[type="radio"]:checked::after { transform: scale(1); }
+#ballot input[type="checkbox"] { min-height: 0; padding: 0; box-shadow: none; }
+#ballot input:focus { box-shadow: none; }
+#ballot input:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 50%; }
+#ballot label { min-height: 52px; }
+
+/* Voting identity above, then one full-width "Seal & cast vote" as the last step */
+.vote-row { flex-direction: column; align-items: stretch; gap: 14px; }
+.vote-row .field { flex: none; }
+.vote-row #voteBtn { width: 100%; }
