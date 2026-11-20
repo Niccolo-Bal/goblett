@@ -24,6 +24,16 @@ function route() {
 window.addEventListener("hashchange", route)
 route()
 
+// The header's links ("Elections", "Start an election") are written for mainnet. On the
+// testnet they must say so too, or following one reloads the page on mainnet.
+if (new URLSearchParams(location.search).get("network") === "testnet" || location.pathname.split("/")[1] === "testnet") {
+  for (const a of document.querySelectorAll("a[data-nav]")) {
+    const to = new URL(a.href)
+    to.searchParams.set("network", "testnet")
+    a.href = to.pathname + to.search + to.hash
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Create wizard
 // ---------------------------------------------------------------------------
