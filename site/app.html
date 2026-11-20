@@ -19,11 +19,19 @@
             <a id="netMain" href="/app.html">Mainnet</a>
             <a id="netTest" href="/app.html?network=testnet">Testnet</a>
           </span>
+          <!-- What the two networks are. Closed by Escape or a click elsewhere (main.js). -->
+          <details class="net-help" id="netHelp">
+            <summary aria-label="What's the difference between mainnet and testnet?">?</summary>
+            <div class="net-help-panel">
+              <p><b>Testnet</b> is free. It runs on test funds that are worth nothing, but it is less secure: the network can be reset, so use it to try things out.</p>
+              <p><b>Mainnet</b> costs a little real USDC to start an election. The results are permanent, so use it for a vote that counts.</p>
+            </div>
+          </details>
         </div>
         <nav class="nav" aria-label="Main">
           <a href="/app.html" data-nav="lobby">Elections</a>
           <a href="/app.html#new" data-nav="new">Start an election</a>
-          <a href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
+          <a class="gh-link" href="https://github.com/Niccolo-Bal/goblett" rel="noopener"><svg class="gh" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>GitHub</a>
           <span class="wallet" id="wallet">
             <span id="account"></span>
             <a id="signinLink" class="btn btn-ghost btn-sm" href="#signin">Sign in</a>
