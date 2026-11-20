@@ -19,6 +19,7 @@ Reviewed and fine: `circle.js` only forwards the user's own session token, and s
 ### Final round commits
 
 - `f82b4e8e` `worker.js` limits POSTs to each `/api/*` route to 10 per minute per address with a Cloudflare rate-limit binding (R5-1, R5-3). The faucet checks the `pending` balance (R5-2). Site tests and build pass.
+- `aba04707` logged the above but also moved the `relayer` submodule pointer by mistake; the next commit puts it back.
 
 
 ## Round 4: OHTTP and accounts (2026-11-17, `main` `98268aa5`)
