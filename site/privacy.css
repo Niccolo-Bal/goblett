@@ -1,0 +1,190 @@
+/* goblett · How your vote stays private (privacy.html).
+   A long scroll story in Molly's liquid-metal look (look.css). The stage stays pinned while
+   scrolling moves one ballot token through eight scenes; privacy.js places every piece. */
+
+.privacy-page { display: block; }
+/* The header floats over the story, so the pinned stage (and its scroll cue) fills the first screen. */
+.privacy-page > .topbar { position: absolute; top: 0; left: 0; right: 0; z-index: 3; }
+.pl-story { position: relative; height: 1000vh; }
+.pl-stage {
+  position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden;
+  display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); align-items: center; gap: 24px 56px;
+  width: min(100% - 32px, 1160px); margin: 0 auto; padding: 72px 0 84px;
+}
+
+/* ---------- Captions: one at a time, the text leads and the picture follows ---------- */
+.pl-captions { position: relative; display: grid; }
+.pl-cap {
+  grid-area: 1 / 1; align-self: center;
+  opacity: 0; transform: translateY(14px); filter: blur(4px); pointer-events: none;
+  transition: opacity 0.45s ease, transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.45s ease;
+}
+.pl-cap.on { opacity: 1; transform: none; filter: none; pointer-events: auto; }
+.pl-cap.past { transform: translateY(-14px); }
+.pl-n { margin: 0 0 12px; font: 500 14px/1.2 var(--sans); letter-spacing: -0.01em; color: var(--blue-soft); }
+.pl-cap h1, .pl-cap h2 { margin: 0 0 14px; font: 500 clamp(26px, 3vw, 36px)/1.15 var(--sans); letter-spacing: -0.03em; color: var(--text); }
+.pl-cap p:not(.pl-n) { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.6; max-width: 34em; }
+
+/* ---------- Scroll cue: a hairline track with a bead running down it; gone by the last scene ---------- */
+.pl-scroll {
+  position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
+  display: grid; justify-items: center; gap: 10px; font-size: 12px; color: var(--muted);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.pl-scroll i { position: relative; width: 1px; height: 28px; overflow: hidden; background: var(--line-strong); }
+.pl-scroll i::after { content: ""; position: absolute; left: 0; top: -10px; width: 1px; height: 10px; background: var(--ink); animation: pl-cue 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+@keyframes pl-cue { to { transform: translateY(38px); } }
+.pl-scroll.gone { opacity: 0; transform: translate(-50%, 8px); }
+
+/* ---------- The board ---------- */
+.pl-view { position: relative; height: 100%; min-height: 0; }
+.pl-board { position: absolute; left: 50%; top: 50%; width: 600px; height: 440px; transform-origin: center; transform: translate(-50%, -50%); }
+.pl-el { position: absolute; left: 0; top: 0; opacity: 0; will-change: transform, opacity; }
+
+/* the ballot token (and its ghost twin): the same liquid metal as the home page */
+.pl-tokbox { width: 140px; height: 128px; z-index: 6; }
+.pl-tokbox .liquid { width: 100%; height: 100%; }
+.pl-tokbox[data-el="ghost"] { z-index: 5; filter: grayscale(0.4); }
+
+/* the copy of the secret that travels into the voter list */
+.pl-chip {
+  width: 22px; height: 20px; z-index: 7; isolation: isolate;
+  background: conic-gradient(from var(--spin) at 18% 135%, #f4f4f7, #9a9aa4, #ffffff, #55555f, #e2e2e7, #b0b0b9, #f4f4f7);
+  box-shadow: inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 3px 6px rgba(255, 255, 255, 0.75), 0 0 0 1.5px rgba(76, 141, 255, 0.55);
+  border-radius: 48% 52% 46% 54% / 52% 46% 54% 48%;
+  animation: liquid-spin 6s linear infinite, liquid-morph 5s ease-in-out infinite;
+}
+
+/* glass cards */
+.pl-browser, .pl-list, .pl-ballot, .pl-box {
+  background: var(--glass); border: 1px solid var(--glass-line); box-shadow: var(--glass-hi), var(--float);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+}
+.pl-browser { width: 240px; height: 190px; border-radius: 18px; z-index: 2; }
+.pl-browser-bar { display: flex; align-items: center; gap: 5px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.pl-browser-bar i { width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); }
+.pl-browser-bar span { margin-left: 8px; }
+.pl-browser-note { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; font-size: 12px; color: var(--muted); }
+
+.pl-list { width: 210px; height: 274px; padding: 14px; border-radius: 18px; z-index: 2; box-sizing: border-box; }
+.pl-list-head { display: flex; justify-content: space-between; align-items: center; height: 20px; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+.pl-lock { font: 500 11px/1 var(--mono); letter-spacing: 0.04em; color: var(--blue-soft); padding: 5px 8px; border-radius: 6px; background: rgba(76, 141, 255, 0.1); opacity: 0; transform: scale(0.8); transition: opacity 0.3s, transform 0.4s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.pl-list.frozen .pl-lock { opacity: 1; transform: none; }
+.pl-rows { position: relative; list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pl-rows li { position: relative; z-index: 1; height: 22px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-radius: 7px; background: var(--tint); font: 400 11px/1 var(--mono); color: var(--muted); transition: background 0.4s, color 0.4s, box-shadow 0.4s; }
+.pl-rows li i { width: 9px; height: 9px; border-radius: 50%; background: var(--metal); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); }
+.pl-rows .pl-mine { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); color: transparent; }
+.pl-rows .pl-mine i { opacity: 0; }
+.pl-list.joined .pl-mine { background: rgba(76, 141, 255, 0.09); color: var(--text); box-shadow: inset 0 0 0 1px rgba(76, 141, 255, 0.35); }
+.pl-list.joined .pl-mine i { opacity: 1; }
+.pl-list.anon .pl-mine { background: var(--tint); color: var(--muted); box-shadow: none; }
+/* the proof: a light runs over every entry and never settles on one */
+.pl-rows::after {
+  content: ""; position: absolute; z-index: 0; left: -4px; right: -4px; top: -3px; height: 28px; border-radius: 9px;
+  background: var(--metal); opacity: 0; transition: opacity 0.4s;
+  animation: pl-sweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate, metal-flow 5s ease-in-out infinite;
+}
+.pl-list.sweeping .pl-rows::after { opacity: 0.55; }
+@keyframes pl-sweep { from { transform: translateY(0); } to { transform: translateY(196px); } }
+
+.pl-wallet {
+  z-index: 4; isolation: isolate; display: grid; gap: 2px; justify-items: center; padding: 11px 22px; border-radius: 12px;
+  background: var(--metal); box-shadow: var(--metal-shadow); animation: metal-flow 7s ease-in-out infinite; color: var(--on-chrome);
+}
+.pl-wallet::before { content: ""; position: absolute; inset: 3px; z-index: -1; border-radius: 9.5px; background: var(--plate); box-shadow: var(--plate-edge); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
+.pl-wallet b { font: 500 14px/1.2 var(--sans); }
+.pl-wallet span { font: 400 11px/1.2 var(--mono); color: var(--muted); }
+.pl-wallet.signing { box-shadow: var(--metal-shadow), 0 0 0 4px rgba(76, 141, 255, 0.18); }
+.pl-wallet.signing::after { content: "Signing…"; position: absolute; left: 50%; top: calc(100% + 8px); transform: translateX(-50%); white-space: nowrap; font-size: 12px; color: var(--blue-soft); }
+
+.pl-say { z-index: 3; white-space: nowrap; font-size: 13px; color: var(--muted); }
+.pl-ballot { z-index: 5; width: 170px; padding: 12px 14px; border-radius: 14px; display: grid; gap: 3px; }
+.pl-ballot span { font-size: 12px; color: var(--muted); }
+.pl-ballot b { font: 500 16px/1.25 var(--sans); letter-spacing: -0.015em; }
+.pl-tag { z-index: 7; white-space: nowrap; font: 500 11px/1 var(--mono); color: var(--blue-soft); padding: 7px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.86); box-shadow: inset 0 0 0 1px rgba(76, 141, 255, 0.35), var(--float); }
+.pl-x { z-index: 7; white-space: nowrap; font-size: 12px; font-weight: 500; color: #c2412d; padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.9); box-shadow: inset 0 0 0 1px rgba(194, 65, 45, 0.3); }
+
+/* ---------- The trip: the token docks at each stop on a line ---------- */
+.pl-route { width: 600px; height: 440px; z-index: 1; }
+.pl-spine { position: absolute; left: 239px; top: 46px; bottom: 46px; width: 2px; border-radius: 1px; background: linear-gradient(var(--line-strong), var(--line-strong)) no-repeat, var(--tint); background-size: 100% var(--fill, 0%); }
+.pl-route .pl-spine { background: linear-gradient(180deg, #a9c6ff, #4c8dff) no-repeat 0 0 / 100% var(--fill, 0%), var(--line-strong); }
+.pl-stop { position: absolute; left: 0; right: 0; height: 0; }
+.pl-stop b {
+  position: absolute; right: 396px; top: -15px; white-space: nowrap; font: 500 13px/1 var(--sans); padding: 9px 13px; border-radius: 10px;
+  background: var(--surface); box-shadow: var(--float); color: var(--muted); transition: color 0.3s, box-shadow 0.3s;
+}
+.pl-stop p { position: absolute; left: 276px; margin: 0; white-space: nowrap; font-size: 13px; line-height: 1; color: var(--faint, var(--muted)); opacity: 0.55; transition: opacity 0.3s, color 0.3s; }
+.pl-stop p:nth-of-type(1) { top: -17px; }
+.pl-stop p:nth-of-type(2) { top: 3px; }
+.pl-stop p span { display: inline-block; min-width: 76px; font: 500 11px/1 var(--mono); letter-spacing: 0.02em; color: var(--blue-soft); }
+.pl-stop.on b { color: var(--text); box-shadow: 0 0 0 1px rgba(76, 141, 255, 0.4), var(--float); }
+.pl-stop.on p { opacity: 1; color: var(--text); }
+
+/* ---------- The count ---------- */
+.pl-count { width: 600px; height: 440px; z-index: 1; }
+.pl-box { position: absolute; left: 210px; top: 120px; width: 180px; height: 58px; border-radius: 10px 10px 16px 16px; display: grid; place-items: center; font-size: 13px; color: var(--muted); }
+.pl-slot { position: absolute; top: -4px; left: 50%; width: 60%; height: 8px; transform: translateX(-50%); border-radius: 4px; background: var(--ink); }
+.pl-bars { position: absolute; left: 200px; top: 216px; width: 200px; height: 150px; display: flex; align-items: flex-end; gap: 22px; border-bottom: 1px solid var(--line-strong); }
+.pl-bars div { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
+.pl-bars i { width: 100%; height: calc(var(--grow, 0) * var(--h) * 100%); border-radius: 8px 8px 2px 2px; background: var(--metal); box-shadow: var(--metal-shadow); animation: metal-flow 7s ease-in-out infinite; }
+.pl-bars span { position: absolute; bottom: -22px; font-size: 12px; color: var(--muted); }
+.pl-count p { position: absolute; left: 0; right: 0; top: 398px; margin: 0; text-align: center; font-size: 13px; color: var(--muted); }
+
+/* progress ticks */
+.pl-progress { position: absolute; right: -28px; top: 50%; transform: translateY(-50%); list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pl-progress li { width: 5px; height: 5px; border-radius: 3px; background: var(--line-strong); transition: height 0.3s, background 0.3s; }
+.pl-progress li.on { height: 18px; background: var(--ink); }
+
+/* ---------- After the story ---------- */
+.pl-limits { padding-top: 96px; padding-bottom: 40px; max-width: 920px; }
+.pl-limits h2 { margin: 0 0 8px; font: 500 clamp(24px, 3vw, 32px)/1.2 var(--sans); letter-spacing: -0.03em; }
+.pl-limits-sub { margin: 0 0 28px; color: var(--muted); }
+.pl-limits ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.pl-limits li { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 16px; padding: 20px 22px; box-shadow: var(--glass-hi), var(--float); }
+.pl-limits h3 { margin: 0 0 6px; font: 500 16px/1.3 var(--sans); letter-spacing: -0.015em; }
+.pl-limits li p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.pl-cta { display: grid; justify-items: center; text-align: center; gap: 22px; padding: 88px 16px 104px; }
+/* The closing token: the goblet mark melting into the blob. morph.js clips .pl-metal to the shape;
+   the glow sits on the wrapper so it follows the clipped outline. */
+.pl-morph {
+  position: relative; width: 140px; height: 170px;
+  filter: drop-shadow(0 0 1px rgba(76, 141, 255, 0.9)) drop-shadow(0 0 14px rgba(76, 141, 255, 0.45)) drop-shadow(0 0 34px rgba(47, 111, 232, 0.25));
+}
+.pl-metal {
+  position: absolute; inset: 0; overflow: hidden;
+  background: conic-gradient(from var(--spin) at 24% 120%, #f4f4f7, #9a9aa4, #ffffff, #55555f, #e2e2e7, #b0b0b9, #f4f4f7);
+  animation: liquid-spin 10s linear infinite;
+}
+/* the drifting highlight and dark pool, over where the blob settles */
+.pl-metal::before {
+  content: ""; position: absolute; left: 10%; right: 10%; top: 32%; bottom: 2%; filter: blur(7px);
+  background:
+    radial-gradient(36% 28% at 34% 30%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0)),
+    radial-gradient(44% 36% at 66% 74%, rgba(14, 14, 22, 0.8), rgba(14, 14, 22, 0));
+  transform: rotate(calc(var(--spin) * -1));
+}
+.pl-flame { position: absolute; inset: 0; overflow: visible; transform-origin: 70px 72px; filter: drop-shadow(0 0 6px rgba(76, 141, 255, 0.6)); }
+@media (prefers-reduced-motion: reduce) { .pl-metal, .pl-metal::before { animation: none; } }
+.pl-cta h2 { margin: 0; font: 500 clamp(22px, 2.6vw, 28px)/1.25 var(--sans); letter-spacing: -0.025em; }
+
+/* ---------- Phones: picture on top, words under it ---------- */
+@media (max-width: 1260px) { .pl-progress { display: none; } }
+@media (max-width: 860px) {
+  .pl-story { height: 1100vh; }
+  .pl-stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px; padding: 64px 0 76px; }
+  .pl-view { grid-row: 1; }
+  .pl-captions { grid-row: 2; min-height: 228px; align-items: start; }
+  .pl-cap { align-self: start; }
+  .pl-cap h1, .pl-cap h2 { font-size: 23px; margin-bottom: 10px; }
+  .pl-cap p:not(.pl-n) { font-size: 15px; line-height: 1.55; }
+  .pl-n { margin-bottom: 10px; }
+  .pl-progress { display: none; }
+  .pl-limits ul { grid-template-columns: minmax(0, 1fr); }
+  .pl-limits { padding-top: 64px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-cap { transition: opacity 0.2s; transform: none !important; filter: none !important; }
+  .pl-rows::after, .pl-chip, .pl-scroll i::after, .pl-wallet, .pl-bars i { animation: none; }
+  .pl-list.sweeping .pl-rows::after { opacity: 0.2; transform: none; height: 222px; }
+}

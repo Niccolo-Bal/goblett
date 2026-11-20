@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Goblett · How your vote stays private</title>
+    <meta name="description" content="Follow one ballot through Goblett: a secret kept in your browser, a zero-knowledge proof, a one-time tag, and a delivery route where nobody sees both you and your ballot." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="128x128" href="/favicon.png" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/look.css" />
+    <link rel="stylesheet" href="/privacy.css" />
+  </head>
+  <body class="home privacy-page">
+    <header class="topbar home-top">
+      <div class="wrap">
+        <a class="brand" href="/"><img class="mark" src="/goblett_mark.svg" alt="" width="18" height="32" />Goblett</a>
+        <nav class="nav home-nav" aria-label="Main">
+          <a href="/why.html">Why Goblett</a>
+          <a href="/privacy.html" aria-current="page">Privacy</a>
+          <a class="gh-link" href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
+          <a class="btn btn-ghost btn-sm" href="/app.html#signin">Sign in</a>
+        </nav>
+      </div>
+    </header>
+
+    <!-- One ballot's journey. The stage stays pinned while scrolling drives every scene (privacy.js). -->
+    <section class="pl-story" id="story" aria-label="How your vote stays private">
+      <div class="pl-stage">
+        <div class="pl-captions">
+          <article class="pl-cap" data-scene="0">
+            <p class="pl-n">How Goblett keeps ballots private</p>
+            <h1>Who did you vote for?</h1>
+            <p>With Goblett, that question has no answer. Your wallet and your ballot are kept apart from registration to the final count, so no relay, server or block explorer can connect them.</p>
+          </article>
+          <article class="pl-cap" data-scene="1">
+            <p class="pl-n">Registration</p>
+            <h2>A secret held by your browser</h2>
+            <p>Registering creates a random secret on your device. It is never uploaded, and it is the only key that can cast your vote.</p>
+          </article>
+          <article class="pl-cap" data-scene="2">
+            <p class="pl-n">Registration</p>
+            <h2>One signature from your wallet</h2>
+            <p>Your wallet signs a free message that adds a sealed fingerprint of the secret to the voter list. The list is public, but it records only who registered, never how anyone votes.</p>
+          </article>
+          <article class="pl-cap" data-scene="3">
+            <p class="pl-n">Registration</p>
+            <h2>The voter list is locked</h2>
+            <p>Registration closes before voting opens. Every voter proves against the same fixed list, and your wallet plays no further part.</p>
+          </article>
+          <article class="pl-cap" data-scene="4">
+            <p class="pl-n">Voting</p>
+            <h2>Proof without identity</h2>
+            <p>Your browser generates a zero-knowledge proof that you hold one of the secrets on the list, without revealing which. The ballot is bound to the proof and cannot be altered in transit.</p>
+          </article>
+          <article class="pl-cap" data-scene="5">
+            <p class="pl-n">Voting</p>
+            <h2>One ballot per voter</h2>
+            <p>Each proof carries a tag derived from your secret and this election. The contract rejects any repeat of a tag, and the tag reveals nothing about who produced it.</p>
+          </article>
+          <article class="pl-cap" data-scene="6">
+            <p class="pl-n">Delivery</p>
+            <h2>No single point sees both</h2>
+            <p>The ballot passes through an encrypted relay, a public message network under a single-use key, and a relayer that covers the gas. Each handles part of the journey. None can link you to your ballot.</p>
+          </article>
+          <article class="pl-cap" data-scene="7">
+            <p class="pl-n">The count</p>
+            <h2>A count anyone can audit</h2>
+            <p>Every ballot and the running total are published on Arc. The link between a voter and a ballot never is.</p>
+          </article>
+        </div>
+
+        <!-- The picture. Drawn on a fixed 600 × 440 board that privacy.js scales to fit. -->
+        <div class="pl-view" aria-hidden="true">
+          <div class="pl-board" id="board">
+            <div class="pl-el pl-browser" data-el="browser">
+              <div class="pl-browser-bar"><i></i><i></i><i></i><span>This browser</span></div>
+              <span class="pl-browser-note">Your secret stays here</span>
+            </div>
+
+            <div class="pl-el pl-list" data-el="list">
+              <div class="pl-list-head"><span>Voter list</span><span class="pl-lock">Frozen</span></div>
+              <ol class="pl-rows">
+                <li><span>0x3f…a1</span><i></i></li>
+                <li><span>0x91…07</span><i></i></li>
+                <li><span>0xc4…2e</span><i></i></li>
+                <li><span>0x5b…d8</span><i></i></li>
+                <li><span>0x0e…6c</span><i></i></li>
+                <li><span>0xa7…19</span><i></i></li>
+                <li><span>0x28…f3</span><i></i></li>
+                <li class="pl-mine"><span>0x7a…c4 · you</span><i></i></li>
+              </ol>
+            </div>
+            <span class="pl-el pl-say" data-el="oneOf">Proves: one of these 8. Never which.</span>
+
+            <div class="pl-el pl-wallet" data-el="wallet"><b>Your wallet</b><span>0x7a…c4</span></div>
+            <span class="pl-el pl-say" data-el="ballotSay">Your ballot</span>
+
+            <div class="pl-el pl-ballot" data-el="ballot"><span>Your ballot</span><b>Ada, then Ben</b></div>
+            <span class="pl-el pl-tag" data-el="tag">one-time tag · 7c2e…91</span>
+            <span class="pl-el pl-tokbox" data-el="ghost"><span class="liquid"></span></span>
+            <span class="pl-el pl-x" data-el="cross">Already used</span>
+
+            <div class="pl-el pl-route" data-el="route">
+              <span class="pl-spine"></span>
+              <div class="pl-stop" style="top: 70px"><b>This browser</b><p><span>Has</span> your secret and your ballot</p><p><span>Sends</span> only the sealed ballot</p></div>
+              <div class="pl-stop" style="top: 170px"><b>OHTTP relay</b><p><span>Sees</span> your IP address</p><p><span>Can't read</span> the ballot</p></div>
+              <div class="pl-stop" style="top: 270px"><b>Nostr and a relayer</b><p><span>Sees</span> the ballot and proof</p><p><span>Never sees</span> who sent it</p></div>
+              <div class="pl-stop" style="top: 370px"><b>Arc</b><p><span>Records</span> the ballot</p><p><span>Never learns</span> which voter cast it</p></div>
+            </div>
+
+            <div class="pl-el pl-count" data-el="count">
+              <div class="pl-box"><span class="pl-slot"></span>Ballot box</div>
+              <div class="pl-bars">
+                <div><i style="--h: 1"></i><span>Ada</span></div>
+                <div><i style="--h: 0.66"></i><span>Ben</span></div>
+                <div><i style="--h: 0.4"></i><span>Cam</span></div>
+              </div>
+              <p>Public ballots. No names.</p>
+            </div>
+
+            <span class="pl-el pl-chip" data-el="chip"></span>
+            <span class="pl-el pl-tokbox" data-el="token"><span class="liquid"></span></span>
+          </div>
+        </div>
+        <ol class="pl-progress" id="progress" aria-hidden="true"></ol>
+        <div class="pl-scroll" id="scrollCue" aria-hidden="true"><span>Scroll to read more</span><i></i></div>
+      </div>
+    </section>
+
+    <section class="pl-limits wrap" aria-labelledby="limits-h">
+      <h2 id="limits-h">What this doesn't hide</h2>
+      <p class="pl-limits-sub">Every privacy system has boundaries. These are Goblett's.</p>
+      <ul>
+        <li><h3>Timing</h3><p>A ballot reaches Arc seconds after it leaves your browser. An observer watching both your network and the chain at once could correlate the two.</p></li>
+        <li><h3>Relay operation</h3><p>Goblett currently operates both the OHTTP relay and its gateway, which in principle allows addresses to be matched with messages. Independent operators are on the roadmap.</p></li>
+        <li><h3>Your secret</h3><p>Anyone holding the secret stored in your browser can vote in your place. Back it up from the election page and keep it private.</p></li>
+        <li><h3>Final ballots</h3><p>The tag that prevents double voting also means a cast ballot cannot be changed.</p></li>
+      </ul>
+    </section>
+
+    <section class="pl-cta">
+      <!-- The goblet mark melts into the liquid-metal blob and back, changing every 4 seconds (morph.js). -->
+      <div class="pl-morph" id="morph" aria-hidden="true">
+        <svg class="pl-flame" viewBox="0 0 140 170" width="140" height="170">
+          <defs>
+            <linearGradient id="plFlame" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stop-color="#cfe1ff" /><stop offset="0.45" stop-color="#4c8dff" /><stop offset="1" stop-color="#2f6fe8" />
+            </linearGradient>
+          </defs>
+          <path transform="translate(30 -2) scale(2)" fill="url(#plFlame)" d="M20 2C24 9 30 14 30 23c0 4 2 3 3-1 3 5 3 11-1 15h-6c2-4 0-8-3-10 1 4-2 7-3 10-1-3-4-6-3-10-3 2-5 6-3 10H8c-4-4-4-10-1-15 1 4 3 5 3 1 0-8 7-13 10-21z" />
+        </svg>
+        <span class="pl-metal"></span>
+      </div>
+      <h2>Run your next election on Goblett.</h2>
+      <a class="btn btn-lg" href="/app.html#signin">Get started</a>
+    </section>
+
+    <footer class="footer">
+      <div class="wrap">
+        <span class="brand"><img class="mark" src="/goblett_mark.svg" alt="" width="18" height="32" />Goblett</span>
+        <nav aria-label="Footer">
+          <a href="/why.html">Why Goblett</a>
+          <a href="/privacy.html">Privacy</a>
+          <a href="https://github.com/Niccolo-Bal/goblett" rel="noopener">GitHub</a>
+          <a href="/app.html">Elections</a>
+          <a href="https://github.com/Niccolo-Bal/goblett/tree/main/relayer" rel="noopener">Run a relayer</a>
+          <span>UBC Hackathon 2026</span>
+        </nav>
+      </div>
+    </footer>
+    <script type="module" src="/privacy.js"></script>
+    <script type="module">
+      import { morph } from "/morph.js"
+      morph(document.getElementById("morph"))
+    </script>
+  </body>
+</html>
