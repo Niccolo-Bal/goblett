@@ -109,6 +109,13 @@ The biggest addition planned after the hackathon is Apple Pay and debit card sup
 it needs an approval that takes several days.
 
 
+## Extrapolated Usecases
+
+Goblett serves as a unique tool for any election where anonymity and decentralization is imperative, but is especially useful for those
+in which the content being voted on in on-chain. The current front-end doesn't support this, but Goblett as a protocol is the most 
+efficient way for users to vote on say equity holder decisions. 2% of $NVDA is now on-chain, and Goblett is a way for shareholders to
+safely vote on company decisions (wallets could be whitelisted based on held shares, and votes can be weighed accordingly).
+
 ## Limitations + Mitigants
 
 ### Cannot Change Votes
