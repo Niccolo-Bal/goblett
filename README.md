@@ -88,10 +88,9 @@ only signatures (which tie to the address). So doing this would require users to
 which is a huge security risk.
 
 ## Front-End Implementation
-
-Goblett is hosted live at [goblett.xyz](https://goblett.xyz). The site is plain HTML, CSS and JavaScript built with Vite, in a white
-liquid-metal style: chrome tokens and buttons with a blue glow, over frosted-glass cards. Users log in with MetaMask or with email; email
-sign-in creates a Circle user-controlled wallet that stays within the browser, sacrificing no security.
+Goblett is hosted live at [goblett.xyz](https://goblett.xyz). The site is plain HTML, CSS and JavaScript built with Vite. Users log in 
+with MetaMask or with email; email sign-in creates a Circle user-controlled wallet that stays within the browser, sacrificing no 
+security.
 
 For deploying elections, we host our own faucet [0xCc516e2aBC427fa846DC37148966e76471f3428b](https://explorer.testnet.arc.io/address/0xCc516e2aBC427fa846DC37148966e76471f3428b) for testnet elections, and have an Arc onramp for mainnet elections to make the deployment
 process more convenient.
@@ -155,18 +154,6 @@ The current OHTTP setup uses a relayer run by us, so we could hypothetically pai
 
 The fix for this would be to have a third party or many parties run the relayer, which would be possible to implement with more time.
 
-### Email and Google Sign-In Go Through Our Server
-
-Signing in without a wallet extension uses Circle's wallets, and those requests pass through the site's server, so we
-see the email, the wallet and the IP together. Voting identities are still random and stay in the browser, so this
-never links a voter to a vote. Use a wallet extension to avoid it.
-
-## Grok Bot Usage (for SpaceXSI Bounty)
-
-Grok Bot was used consistently throughout the project primarily to check for vulnerabilities. A team of three
-specialist bots ("Red," "Blue," and "Scout") worked together to uncover several vulnerabilities at each step 
-of the project that were not found initially by devs or coding agents. See `AUDIT_REPORT.md`.
-
 <br>
 
 <br>
@@ -174,7 +161,7 @@ of the project that were not found initially by devs or coding agents. See `AUDI
 <br>
 
 <div align="center">
-<em>Made by Niccolo Balestriere et al. from Blockchain@Emory</em>
+<em>Made by Niccolo Balestriere from Blockchain@Emory</em>
 <br>
 <br>
 <img src="media/bae.png" alt="logo" width="850px">
