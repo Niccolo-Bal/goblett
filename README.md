@@ -1,6 +1,6 @@
 
 <div align="center">
-<img src="media/goblett_logo_with_title.png" alt="logo" width="500px">
+<img src="media/goblett_brand.png" alt="Goblett" width="500px">
 </div>
 
 <header>
