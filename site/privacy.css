@@ -144,27 +144,7 @@
 .pl-limits h3 { margin: 0 0 6px; font: 500 16px/1.3 var(--sans); letter-spacing: -0.015em; }
 .pl-limits li p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
 .pl-cta { display: grid; justify-items: center; text-align: center; gap: 22px; padding: 88px 16px 104px; }
-/* The closing token: the goblet mark melting into the blob. morph.js clips .pl-metal to the shape;
-   the glow sits on the wrapper so it follows the clipped outline. */
-.pl-morph {
-  position: relative; width: 140px; height: 170px;
-  filter: drop-shadow(0 0 1px rgba(76, 141, 255, 0.9)) drop-shadow(0 0 14px rgba(76, 141, 255, 0.45)) drop-shadow(0 0 34px rgba(47, 111, 232, 0.25));
-}
-.pl-metal {
-  position: absolute; inset: 0; overflow: hidden;
-  background: conic-gradient(from var(--spin) at 24% 120%, #f4f4f7, #9a9aa4, #ffffff, #55555f, #e2e2e7, #b0b0b9, #f4f4f7);
-  animation: liquid-spin 10s linear infinite;
-}
-/* the drifting highlight and dark pool, over where the blob settles */
-.pl-metal::before {
-  content: ""; position: absolute; left: 10%; right: 10%; top: 32%; bottom: 2%; filter: blur(7px);
-  background:
-    radial-gradient(36% 28% at 34% 30%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0)),
-    radial-gradient(44% 36% at 66% 74%, rgba(14, 14, 22, 0.8), rgba(14, 14, 22, 0));
-  transform: rotate(calc(var(--spin) * -1));
-}
-.pl-flame { position: absolute; inset: 0; overflow: visible; transform-origin: 70px 72px; filter: drop-shadow(0 0 6px rgba(76, 141, 255, 0.6)); }
-@media (prefers-reduced-motion: reduce) { .pl-metal, .pl-metal::before { animation: none; } }
+/* The closing token (.pl-morph) is styled in look.css, shared with the landing page. */
 .pl-cta h2 { margin: 0; font: 500 clamp(22px, 2.6vw, 28px)/1.25 var(--sans); letter-spacing: -0.025em; }
 
 /* ---------- Phones: picture on top, words under it ---------- */

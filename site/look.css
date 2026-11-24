@@ -1,7 +1,7 @@
 /* goblett · Molly's look, layered over Nico's ember styles (style.css).
    Loaded after style.css on both pages. It doesn't restructure anything: it switches ember's
    palette and type to white two-tone, turns the main buttons into liquid metal under frosted
-   glass, and carries the guided intro and the key/ballot animations (animations.js, intro.js). */
+   glass, and carries the key/ballot animations (animations.js). */
 :root {
   color-scheme: light;
   /* ember's four source colours, flipped to white; every other shade in style.css mixes from these */
@@ -87,7 +87,7 @@ button, .btn { background: var(--surface); color: var(--text); border-color: tra
 /* ---------- The goblet mark: chrome with a glowing blue flame (goblett_mark.svg) ---------- */
 .brand .mark { height: 30px; filter: drop-shadow(0 0 6px rgba(76, 141, 255, 0.35)); }
 
-/* ---------- Liquid-metal token, the intro, and the key/ballot animations (from this branch) ---------- */
+/* ---------- Liquid-metal token and the key/ballot animations (from this branch) ---------- */
 /* Liquid chrome: the ballot token. A slowly turning metal surface with a blue rim, glowing like ember.goblett.xyz. */
 @property --spin { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
 .liquid {
@@ -292,119 +292,57 @@ button, .btn { background: var(--surface); color: var(--text); border-color: tra
   .forge-note { font-size: 12px; }
 }
 
-/* ---------------------------------------------------------------------------
-   Guided intro. #intro[data-phase]: typing → ready → running → collapsing → guide. */
-body.intro-open { overflow: hidden; }
-.intro {
-  position: fixed; inset: 0; z-index: 50; background: var(--paper);
-  display: grid; place-items: center; padding: 24px 16px 72px;
-  animation: intro-in 0.4s ease-out;
-}
-@keyframes intro-in { from { opacity: 0; } }
-.intro-skip { position: absolute; right: 24px; bottom: 22px; font-size: 13px; }
-
-/* The terminal: a frosted glass card with liquid metal moving behind the text */
-.term {
-  position: relative; width: min(480px, 100%); aspect-ratio: 1 / 1; max-height: calc(100vh - 140px);
-  border-radius: 40px; overflow: hidden; isolation: isolate;
-  background: #dedee4; color: #fff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 40px 80px -40px rgba(0, 0, 0, 0.45);
-  animation: term-wobble 9s ease-in-out infinite;
-  transition: transform 0.65s cubic-bezier(0.6, 0, 0.3, 1), border-radius 0.65s, opacity 0.5s 0.15s;
-}
-@keyframes term-wobble {
-  0%, 100% { border-radius: 40px 44px 38px 46px; }
-  50% { border-radius: 46px 38px 44px 40px; }
-}
-.term-glass { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
-.term-glass::after { content: ""; position: absolute; inset: 0; background: linear-gradient(200deg, rgba(28, 28, 42, 0.78), rgba(28, 28, 42, 0.25) 45%, rgba(28, 28, 42, 0) 70%); }
-.term-blob { position: absolute; width: 75%; height: 62%; left: -4%; bottom: -8%; filter: blur(2px); animation: liquid-spin 7s linear infinite, liquid-morph 6s ease-in-out infinite, term-drift 11s ease-in-out infinite; }
-.term-blob.two { width: 55%; height: 44%; left: auto; right: -12%; bottom: auto; top: 6%; filter: blur(16px); opacity: 0.7; animation-duration: 12s, 9s, 14s; animation-direction: reverse, normal, reverse; }
-@keyframes term-drift { 50% { translate: 18% -14%; } }
-.term-body { position: relative; padding: 34px 34px 0; font: 13px/1.75 var(--mono); letter-spacing: 0; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); }
-.term-body p { margin: 0; }
-.term-dots { display: flex; gap: 6px; margin-bottom: 14px; }
-.term-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); }
-.term-dim { color: rgba(255, 255, 255, 0.7); }
-.term-cmd { color: #fff; font-weight: 600; }
-.caret { display: inline-block; width: 7px; height: 15px; margin-left: 2px; vertical-align: -2px; background: #fff; animation: caret 1s steps(1) infinite; }
-@keyframes caret { 50% { opacity: 0; } }
-.term-out { margin-top: 12px; }
-.term-out p { animation: line-in 0.3s ease-out both; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.term-out b { font-weight: 600; }
-.term-out .k { display: inline-block; width: 9ch; color: rgba(255, 255, 255, 0.72); }
-@keyframes line-in { from { opacity: 0; transform: translateY(4px); } }
-.term-bar {
-  position: absolute; left: 22px; right: 22px; bottom: 22px;
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 7px 7px 7px 14px; border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72); color: #8a8a85; font-size: 13px;
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s;
-}
-.term-bar kbd { font: 500 12px var(--mono); color: #161615; background: rgba(0, 0, 0, 0.06); border-radius: 6px; padding: 3px 6px; }
-.term-bar button { --on-chrome: #161615; --glass: rgba(232, 233, 238, 0.78); --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.07); }
-.intro[data-phase="ready"] .term-bar { opacity: 1; transform: none; }
-.intro:not([data-phase="typing"]):not([data-phase="ready"]) .caret { display: none; }
-.intro[data-phase="collapsing"] .term { transform: scale(0.26); border-radius: 50%; opacity: 0; }
-
-/* The guide: the chrome token speaking one two-tone line at a time */
-.guide {
-  position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; text-align: center;
-  padding: 24px; cursor: pointer; animation: intro-in 0.5s ease-out;
-}
-.guide-token { width: 132px; height: 120px; margin-bottom: 26px; }
-.guide-token.bob { animation: liquid-spin 10s linear infinite, liquid-morph 8s ease-in-out infinite, glow-breathe 4s ease-in-out infinite, bob 0.7s cubic-bezier(0.3, 1.6, 0.5, 1); }
-@keyframes bob { 0% { scale: 1; } 30% { scale: 1.08 0.93; } 60% { scale: 0.97 1.04; } 100% { scale: 1; } }
-.guide-line { max-width: 360px; min-height: 68px; margin: 0 0 18px; font-size: 15px; line-height: 1.5; }
-.guide-line .w { display: inline-block; animation: word-in 0.45s ease-out both; }
-.guide-line .lead { color: var(--ink); }
-.guide-line .rest { color: var(--muted); }
-@keyframes word-in { from { opacity: 0; filter: blur(4px); transform: translateY(3px); } }
-.guide-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; min-height: 40px; }
-.guide-actions .link { font-size: 13px; }
-.guide-dots { list-style: none; display: flex; gap: 6px; padding: 0; margin: 26px 0 0; }
-.guide-dots li { width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); transition: background 0.3s, width 0.3s; }
-.guide-dots li.on { width: 16px; border-radius: 3px; background: var(--ink); }
-
 @media (prefers-reduced-motion: reduce) {
-  .liquid, .term, .term-blob, .guide-token.bob, .guide-line .w, .intro, .guide, .metal, .metal::before, .seal-token, .forge-new { animation: none !important; }
-  .term { transition: none; }
+  .liquid, .metal, .metal::before, .seal-token, .forge-new { animation: none !important; }
 }
 
-
-/* Text-only buttons in the intro, and the vote panel while its ballot is being sealed */
-.intro button.link { background: none; box-shadow: none; color: var(--muted); min-height: 0; padding: 4px 0; font-weight: 400; }
-.intro button.link:hover { color: var(--text); background: none; }
+/* The vote panel while its ballot is being sealed */
 #vote.sealing #ballot, #vote.sealing .vote-row { display: none; }
+
+/* ---------- The morphing token: the goblet mark and the liquid-metal blob (morph.js) ----------
+   morph.js clips .pl-metal to the shape; the glow sits on the wrapper so it follows the clipped outline.
+   Drawn on a fixed 140 × 170 box: the goblet fills it, the blob sits in the lower part. */
+.pl-morph {
+  position: relative; display: block; width: 140px; height: 170px;
+  filter: drop-shadow(0 0 1px rgba(76, 141, 255, 0.9)) drop-shadow(0 0 14px rgba(76, 141, 255, 0.45)) drop-shadow(0 0 34px rgba(47, 111, 232, 0.25));
+}
+.pl-metal {
+  position: absolute; inset: 0; overflow: hidden;
+  background: conic-gradient(from var(--spin) at 24% 120%, #f4f4f7, #9a9aa4, #ffffff, #55555f, #e2e2e7, #b0b0b9, #f4f4f7);
+  animation: liquid-spin 10s linear infinite;
+}
+/* the drifting highlight and dark pool, over where the blob settles */
+.pl-metal::before {
+  content: ""; position: absolute; left: 10%; right: 10%; top: 32%; bottom: 2%; filter: blur(7px);
+  background:
+    radial-gradient(36% 28% at 34% 30%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0)),
+    radial-gradient(44% 36% at 66% 74%, rgba(14, 14, 22, 0.8), rgba(14, 14, 22, 0));
+  transform: rotate(calc(var(--spin) * -1));
+}
+.pl-flame { position: absolute; inset: 0; overflow: visible; transform-origin: 70px 72px; filter: drop-shadow(0 0 6px rgba(76, 141, 255, 0.6)); }
+@media (prefers-reduced-motion: reduce) { .pl-metal, .pl-metal::before { animation: none; } }
 
 /* ---------- Landing page: a short calling card around the liquid-metal token ---------- */
 body.home { min-height: 100svh; display: flex; flex-direction: column; }
 .home .topbar .wrap { padding-top: 18px; padding-bottom: 18px; }
-.home .nav button.link { background: none; box-shadow: none; min-height: 44px; padding: 0; color: var(--muted); font: inherit; }
-.home .nav button.link:hover { color: var(--text); }
 .calling { flex: 1; display: grid; justify-items: center; align-content: center; text-align: center; gap: 0; padding: 24px 16px 72px; }
-.calling-token { width: 150px; height: 138px; padding: 0; margin-bottom: 34px; background: none; box-shadow: none; border-radius: 50%; cursor: pointer; }
-.calling-token:hover { background: none; transform: scale(1.03); }
-.calling-token .liquid { width: 100%; height: 100%; }
+/* The token is a link to sign-in. It rests as the blob (in the lower part of its box) and rises into the goblet on hover. */
+.calling-token { --s: 1.3; display: block; width: calc(140px * var(--s)); height: calc(170px * var(--s)); margin-bottom: 30px; border-radius: 24px; cursor: pointer; }
+.calling-token .pl-morph { transform: scale(var(--s)); transform-origin: 0 0; }
+.calling-token:focus-visible { outline: 2px solid var(--blue); outline-offset: 6px; }
 .calling h1 { margin: 0 0 10px; font: 500 22px/1.35 var(--sans); letter-spacing: -0.022em; }
 .calling h1 span { display: block; }
 .calling h1 .tone { color: var(--muted); }
 .calling-sub { margin: 0 0 26px; color: var(--muted); font-size: 15px; }
 .calling-sub span { display: block; }
 .calling-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-.calling-how { margin-top: 14px; background: none; box-shadow: none; min-height: 0; padding: 4px 0; color: var(--muted); font-weight: 400; }
-.calling-how:hover { background: none; color: var(--text); }
 .facts { width: min(100%, 340px); margin: 40px 0 0; display: grid; gap: 6px; font-size: 14px; }
 .facts > div { display: flex; justify-content: space-between; gap: 16px; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; }
 @media (max-width: 480px) { .calling-actions > .btn { flex: 1 1 auto; } }
 
-/* A new visit: the intro covers the page from the first paint (index.html adds .intro-first) */
-.intro-first body > :not(#intro) { visibility: hidden; }
-
-/* ---------- Why Goblett (why.html): the sections after the scroll story ---------- */
+/* ---------- How it Works (why.html): the sections after the scroll story ---------- */
 .why { width: min(100% - 32px, 760px); margin: 0 auto; padding: 24px 0 72px; display: grid; gap: 56px; }
 .why-lead { margin: 0 0 22px; font: 500 clamp(22px, 3vw, 28px)/1.3 var(--sans); letter-spacing: -0.025em; }
 .why-lead span { display: block; }

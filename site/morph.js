@@ -1,9 +1,12 @@
-// The closing token on why.html: the goblet mark melts into the liquid-metal blob.
+// The morphing token: the goblet mark melts into the liquid-metal blob.
 //
 // Both shapes are drawn as the same number of outline points, starting at the top centre
 // and running clockwise, so every point on the goblet has a partner on the blob. Each frame
 // mixes the two and clips the metal surface to the result. The flame sinks into the metal
-// as it melts. It changes shape every 4 seconds (goblet → blob → goblet in 8) while it's on screen.
+// as it melts.
+//
+// why.html: it changes shape every 4 seconds (goblet → blob → goblet in 8) while it's on screen.
+// index.html ({ hover }): it rests as the blob and becomes the goblet while the link is hovered or focused.
 // ?morph=0.5 holds one frame (0 goblet, 1 blob).
 
 const BOX = { w: 140, h: 170 }
@@ -46,7 +49,8 @@ function blobPoints(t, wobble) {
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 const clamp = (v) => Math.min(1, Math.max(0, v))
 
-export function morph(root) {
+// hover: an element. When given, the token rests as the blob and turns into the goblet while it's hovered or focused.
+export function morph(root, { hover } = {}) {
   const metal = root.querySelector(".pl-metal")
   const flame = root.querySelector(".pl-flame")
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -66,10 +70,38 @@ export function morph(root) {
     flame.style.transform = `translateY(${(f * 34).toFixed(1)}px) scale(${(1 - f * 0.55).toFixed(3)})`
   }
 
-  if (reduce) return draw(1, 0)
   const still = Number.parseFloat(new URLSearchParams(location.search).get("morph"))
   if (Number.isFinite(still)) return draw(clamp(still), 0)
 
+  if (hover) {
+    let m = 1 // where it is now
+    let to = 1 // where it's heading
+    let last = 0
+    let frame = 0
+    function tick(now) {
+      const step = reduce ? 1 : (last ? now - last : 0) / MELT
+      last = now
+      m = to > m ? Math.min(to, m + step) : Math.max(to, m - step)
+      draw(m, reduce ? 0 : now)
+      // The blob keeps rippling, so it keeps drawing; the finished goblet is still.
+      frame = reduce || (m === 0 && to === 0) ? 0 : requestAnimationFrame(tick)
+    }
+    function go(shape) {
+      to = shape
+      if (!frame) {
+        last = 0
+        frame = requestAnimationFrame(tick)
+      }
+    }
+    const held = () => hover.matches(":hover, :focus-visible")
+    for (const ev of ["pointerenter", "pointerleave", "focus", "blur"]) hover.addEventListener(ev, () => go(held() ? 0 : 1))
+    // Coming back with the back button: the page is restored as it was left, mid-hover.
+    addEventListener("pageshow", () => go(held() ? 0 : 1))
+    draw(1, 0)
+    return go(1)
+  }
+
+  if (reduce) return draw(1, 0)
   let start = 0
   let frame = 0
   let visible = false
