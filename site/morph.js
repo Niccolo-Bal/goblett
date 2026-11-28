@@ -6,7 +6,8 @@
 // as it melts.
 //
 // why.html: it changes shape every 4 seconds (goblet → blob → goblet in 8) while it's on screen.
-// index.html ({ hover }): it rests as the blob and becomes the goblet while the link is hovered or focused.
+// index.html ({ hover }): it rests as the blob, and becomes the goblet while the link is hovered or focused
+// and for a few seconds at a time on its own.
 // ?morph=0.5 holds one frame (0 goblet, 1 blob).
 
 const BOX = { w: 140, h: 170 }
@@ -16,6 +17,8 @@ const GOBLET = "M3 39h34c0 11-5 19-13.5 23.5-1.5 1.5-1.9 3.5-1.9 6.5v8c0 2.5 3.4
 const BLOB = { cx: 70, cy: 112, r: 50 }
 const HOLD = 3500 // ms each shape holds
 const MELT = 500 // ms each change takes; 2 × (HOLD + MELT) = one 8 s cycle
+const REST = 6000 // hover mode: ms it rests as the blob between showing the goblet on its own
+const SHOW = 2500 // hover mode: ms it then stays the goblet
 
 function gobletPoints() {
   const ns = "http://www.w3.org/2000/svg"
@@ -49,7 +52,8 @@ function blobPoints(t, wobble) {
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 const clamp = (v) => Math.min(1, Math.max(0, v))
 
-// hover: an element. When given, the token rests as the blob and turns into the goblet while it's hovered or focused.
+// hover: an element. When given, the token rests as the blob and turns into the goblet while it's hovered or focused,
+// and now and then on its own.
 export function morph(root, { hover } = {}) {
   const metal = root.querySelector(".pl-metal")
   const flame = root.querySelector(".pl-flame")
@@ -93,12 +97,22 @@ export function morph(root, { hover } = {}) {
         frame = requestAnimationFrame(tick)
       }
     }
-    const held = () => hover.matches(":hover, :focus-visible")
-    for (const ev of ["pointerenter", "pointerleave", "focus", "blur"]) hover.addEventListener(ev, () => go(held() ? 0 : 1))
+    let showing = false // the goblet's own turn, every REST ms
+    const update = () => go(showing || hover.matches(":hover, :focus-visible") ? 0 : 1)
+    for (const ev of ["pointerenter", "pointerleave", "focus", "blur"]) hover.addEventListener(ev, update)
     // Coming back with the back button: the page is restored as it was left, mid-hover.
-    addEventListener("pageshow", () => go(held() ? 0 : 1))
+    addEventListener("pageshow", update)
     draw(1, 0)
-    return go(1)
+    update()
+    if (reduce) return
+    ;(function turn() {
+      setTimeout(() => {
+        showing = !showing && !document.hidden
+        update()
+        turn()
+      }, showing ? SHOW : REST)
+    })()
+    return
   }
 
   if (reduce) return draw(1, 0)

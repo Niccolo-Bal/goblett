@@ -336,10 +336,6 @@ body.home { min-height: 100svh; display: flex; flex-direction: column; }
 .calling-sub { margin: 0 0 26px; color: var(--muted); font-size: 15px; }
 .calling-sub span { display: block; }
 .calling-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-.facts { width: min(100%, 340px); margin: 40px 0 0; display: grid; gap: 6px; font-size: 14px; }
-.facts > div { display: flex; justify-content: space-between; gap: 16px; }
-.facts dt { color: var(--muted); }
-.facts dd { margin: 0; }
 @media (max-width: 480px) { .calling-actions > .btn { flex: 1 1 auto; } }
 
 /* ---------- How it Works (why.html): the sections after the scroll story ---------- */
